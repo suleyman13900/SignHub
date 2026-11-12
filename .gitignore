@@ -5,12 +5,10 @@ bin-release/
 [Bb]in/
 
 # Other files and folders
-.settings/
 
 # Executables
 *.swf
 *.air
-*.ipa
 *.apk
 
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
