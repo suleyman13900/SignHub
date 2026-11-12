@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#171717"><title>SignHub</title>
+<style>
+:root{color-scheme:dark;--bg:#171717;--panel:#202020;--line:#3a3a3a;--muted:#a3a3a3;--text:#f2f2f2;--accent:#e5e5e5}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;display:grid;place-items:center;padding:24px}
+main{width:min(100%,440px)}
+.brand{font-size:15px;font-weight:650;margin:0 0 30px}
+h1{font-size:24px;letter-spacing:-.5px;font-weight:650;margin:0 0 5px}
+.intro{color:var(--muted);font-size:13px;margin:0 0 24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:20px}
+.field{margin-bottom:17px}
+.field label{display:block;font-weight:600;font-size:12px;margin-bottom:7px}
+.pick{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:#191919;padding:11px 12px;border-radius:5px;cursor:pointer}
+.pick:hover{border-color:#777}
+.pick .ico{width:20px;color:#bdbdbd;font-size:16px;flex:none;text-align:center}
+.pick strong{display:block;font-size:12px;font-weight:550;overflow-wrap:anywhere}
+.pick small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+input[type=file]{display:none}
+input[type=password]{width:100%;background:#191919;border:1px solid var(--line);border-radius:5px;padding:11px 12px;color:var(--text);outline:none;font:inherit}
+input[type=password]:focus{border-color:#999}
+button{width:100%;border:1px solid #e5e5e5;border-radius:5px;padding:11px;background:#e5e5e5;color:#171717;font-weight:650;font-size:13px;cursor:pointer;margin-top:4px}
+button:hover:not(:disabled){background:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+.status{margin-top:13px;color:var(--muted);font-size:12px;min-height:18px}
+.install{display:none;margin-top:12px}
+.install a{display:inline-block;color:var(--text);text-decoration:underline;text-underline-offset:3px;font-weight:600}
+.hint{color:#929292;font-size:11px;margin:14px 2px 0}
+.footer{color:#777;font-size:10px;margin-top:24px}
+</style></head>
+<body><main>
+<div class="brand">SignHub</div>
+<h1>Sign your IPA.</h1><p class="intro">Choose your app and signing certificate. One tap to sign.</p>
+<section class="card">
+  <div class="field"><label>1. IPA file</label><label class="pick" for="ipa"><span class="ico">＋</span><span><strong id="ipaName">Choose IPA file</strong><small id="ipaInfo">Your .ipa app file</small></span></label><input id="ipa" type="file" accept=".ipa,application/octet-stream"></div>
+  <div class="field"><label>2. Signing certificate (.p12)</label><label class="pick" for="cert"><span class="ico">♧</span><span><strong id="certName">Choose certificate</strong><small id="certInfo">Your Apple distribution certificate</small></span></label><input id="cert" type="file" accept=".p12,application/x-pkcs12"></div>
+  <div class="field"><label>3. Certificate password</label><input id="password" type="password" placeholder="Enter certificate password" autocomplete="off"></div>
+  <div class="field"><label>4. Provisioning profile</label><label class="pick" for="profile"><span class="ico">▤</span><span><strong id="profileName">Choose provisioning profile</strong><small id="profileInfo">.mobileprovision file (required)</small></span></label><input id="profile" type="file" accept=".mobileprovision"></div>
+  <button id="sign" disabled>Sign &amp; Install</button>
+  <div class="status" id="status">Select your files to continue.</div>
+  <div class="install" id="install"><a id="installLink" href="#">Install on iPhone</a></div>
+</section>
+<p class="hint">Signing needs a secure server with Apple signing tools. Your certificate and password should never be sent to an untrusted service.</p>
+<div class="footer">SignHub · Independent project, not affiliated with Apple or SignTools.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function size(n){return n<1048576?(n/1024).toFixed(0)+' KB':(n/1048576).toFixed(1)+' MB'}
+function bindFile(id,name,info,label,detail){$(id).addEventListener('change',e=>{let f=e.target.files[0];$(name).textContent=f?f.name:label;$(info).textContent=f?size(f.size):detail;check()})}
+bindFile('ipa','ipaName','ipaInfo','Choose IPA file','Your .ipa app file');
+bindFile('cert','certName','certInfo','Choose certificate','Your Apple distribution certificate');
+bindFile('profile','profileName','profileInfo','Choose provisioning profile','.mobileprovision file (required)');
+$('password').addEventListener('input',check);
+function check(){$('sign').disabled=!($('ipa').files.length&&$('cert').files.length&&$('profile').files.length&&$('password').value.length)}
+$('sign').addEventListener('click',async()=>{
+ const btn=$('sign');btn.disabled=true;$('install').style.display='none';
+ $('status').textContent='Uploading files and starting signing…';
+ try{
+  const data=new FormData();data.append('ipa',$('ipa').files[0]);data.append('certificate',$('cert').files[0]);data.append('certificate_password',$('password').value);data.append('provisioning_profile',$('profile').files[0]);
+  const response=await fetch('/api/sign',{method:'POST',body:data});
+  if(!response.ok)throw new Error('Signing service returned HTTP '+response.status);
+  const result=await response.json();
+  if(!result.install_url)throw new Error('Signing service did not return an install_url.');
+  $('installLink').href=result.install_url;$('install').style.display='block';$('status').textContent='Signed successfully. Open the link in Safari on your iPhone.';
+ }catch(err){$('status').textContent=err.message==='Failed to fetch'?'Signing backend is not connected yet. Set up /api/sign on your server first.':err.message;}
+ finally{check()}
+});
+</script></body></html>
