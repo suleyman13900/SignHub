@@ -55,7 +55,85 @@ bindFile('cert','certName','certInfo','Choose certificate','Your Apple distribut
 bindFile('profile','profileName','profileInfo','Choose provisioning profile','.mobileprovision file (required)');
 $('password').addEventListener('input',check);
 function check(){$('sign').disabled=!($('ipa').files.length&&$('cert').files.length&&$('profile').files.length&&$('password').value.length)}
-$('sign').addEventListener('click',async()=>{
+
+const API = 'https://flarestore.app';
+
+$('sign').addEventListener('click', async () => {
+  const btn = $('sign');
+  btn.disabled = true;
+  $('install').style.display = 'none';
+
+  const status = $('status');
+
+  try {
+    const ipa = $('ipa').files[0];
+    const cert = $('cert').files[0];
+    const profile = $('profile').files[0];
+    const password = $('password').value;
+
+    // Step 1: Upload IPA
+    status.textContent = 'Uploading IPA...';
+
+    const uploadData = new FormData();
+    uploadData.append('ipa', ipa);
+
+    const uploadResponse = await fetch(`${API}/upload/ipa`, {
+      method: 'POST',
+      body: uploadData
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error(`IPA upload failed: HTTP ${uploadResponse.status}`);
+    }
+
+    const uploadResult = await uploadResponse.json();
+
+    if (!uploadResult.session_id) {
+      throw new Error('No signing session received.');
+    }
+
+    // Step 2: Sign IPA
+    status.textContent = 'Signing your application...';
+
+    const signData = new FormData();
+    signData.append('session_id', uploadResult.session_id);
+    signData.append('p12', cert);
+    signData.append('provision', profile);
+    signData.append('p12_password', password);
+
+    const signResponse = await fetch(`${API}/sign`, {
+      method: 'POST',
+      body: signData
+    });
+
+    if (!signResponse.ok) {
+      throw new Error(`Signing failed: HTTP ${signResponse.status}`);
+    }
+
+    const result = await signResponse.json();
+
+    if (!result.success || !result.install_url) {
+      throw new Error(result.message || 'Signing failed.');
+    }
+
+    // Step 3: Display installation link
+    const installUrl = new URL(result.install_url, API).href;
+
+    $('installLink').href = installUrl;
+    $('install').style.display = 'block';
+
+    status.textContent =
+      'Signed successfully! Open the link in Safari on your iPhone.';
+
+  } catch (err) {
+    status.textContent = err.message === 'Failed to fetch'
+      ? 'Could not connect to the signing service. Check API availability and CORS settings.'
+      : err.message;
+  } finally {
+    check();
+  }
+});
+
  const btn=$('sign');btn.disabled=true;$('install').style.display='none';
  $('status').textContent='Uploading files and starting signing…';
  try{
