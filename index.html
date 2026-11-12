@@ -1,228 +1,300 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Custom IPA Signer</title>
-
+  <title>IPA Signer</title>
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      padding: 30px 16px;
-      background: #101116;
-      color: #fff;
-      font-family: Arial, sans-serif;
-    }
-
-    .container {
-      max-width: 460px;
-      margin: 40px auto;
-      padding: 25px;
-      background: #1b1d25;
-      border: 1px solid #30333e;
-      border-radius: 16px;
-    }
-
-    h1 {
-      text-align: center;
-      margin-top: 0;
-    }
-
-    .subtitle {
-      text-align: center;
-      color: #a5a8b5;
-      margin-bottom: 25px;
-    }
-
-    label {
-      display: block;
-      margin: 17px 0 7px;
-      font-size: 14px;
-      font-weight: bold;
-    }
-
-    input {
-      width: 100%;
-      padding: 12px;
-      background: #11131a;
-      color: white;
-      border: 1px solid #393d4b;
-      border-radius: 8px;
-    }
-
-    input[type="file"] {
-      font-size: 13px;
-    }
-
-    button {
-      width: 100%;
-      margin-top: 24px;
-      padding: 14px;
-      border: 0;
-      border-radius: 9px;
-      background: #3978f6;
-      color: white;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #2865dc;
-    }
-
-    button:disabled {
-      opacity: .6;
-      cursor: wait;
-    }
-
-    .notice {
-      margin-top: 18px;
-      color: #a5a8b5;
-      font-size: 12px;
-      line-height: 1.6;
-      text-align: center;
-    }
-
-    #status {
-      margin-top: 16px;
-      text-align: center;
-      font-size: 14px;
-      overflow-wrap: anywhere;
-    }
-
-    .credit {
-      margin-top: 22px;
-      text-align: center;
-      color: #888c9b;
-      font-size: 12px;
-    }
-
-    .credit a {
-      color: #8bb2ff;
-    }
+    :root{color-scheme:dark;--bg:#10131a;--panel:#191f2b;--field:#111722;--text:#f4f6fb;--muted:#aab4c5;--line:#30394a;--accent:#6d8cff;--accent2:#526fe0;--danger:#ff7777}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:32px 16px}
+    main{max-width:780px;margin:auto}.hero{text-align:center;margin:8px 0 26px}.hero h1{font-size:clamp(30px,5vw,42px);margin:0 0 6px}.hero p{color:var(--muted);margin:0}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:clamp(18px,4vw,28px);box-shadow:0 18px 50px #0004}
+    .section{margin:0 0 24px}.section-title{font-weight:700;margin-bottom:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{min-width:0}.field label{display:block;font-weight:600;margin-bottom:7px}
+    input,select{width:100%;padding:12px 13px;border-radius:10px;border:1px solid var(--line);background:var(--field);color:var(--text);font:inherit;min-width:0}
+    input[type=file]{padding:9px}input::placeholder{color:#778398}.hint{font-size:13px;color:var(--muted);margin-top:7px}
+    .warning{background:#4a3518;color:#ffe0a5;border:1px solid #785a2c;padding:12px 14px;border-radius:10px;margin-bottom:15px}
+    .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:22px}
+    button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 18px;font-weight:700}
+    .primary{background:var(--accent);color:white;min-width:130px}.primary:hover{background:var(--accent2)}.primary:disabled{opacity:.55;cursor:wait}
+    .secondary{background:#2a3446;color:var(--text)}.progress{height:9px;background:#30394a;border-radius:20px;overflow:hidden;margin-top:20px}.bar{height:100%;width:0;background:var(--accent);transition:width .2s}
+    #status{color:var(--muted);font-size:14px;margin-top:10px;overflow-wrap:anywhere}.tweak-row{display:flex;gap:8px;align-items:center;margin-top:8px}.tweak-row span{flex:1;overflow-wrap:anywhere}.remove{padding:5px 10px;background:#3a2930;color:#ffb8b8}
+    .foot{color:var(--muted);font-size:12px;text-align:center;margin:18px 0}.hidden{display:none!important}
+    @media(max-width:600px){.grid{grid-template-columns:1fr}.panel{padding:18px}}
   </style>
 </head>
-
 <body>
+<main>
+  <header class="hero">
+    <h1>IPA Signer</h1>
+    <p>Sign an IPA using your own P12 certificate and provisioning profile.</p>
+  </header>
 
-<div class="container">
+  <section class="panel">
+    <div class="section">
+      <div class="section-title">IPA source</div>
+      <div class="grid">
+        <div class="field"><label for="ipa-file">IPA file</label><input id="ipa-file" type="file" accept=".ipa"></div>
+        <div class="field"><label for="ipa-url">Or direct IPA URL</label><input id="ipa-url" type="url" placeholder="https://example.com/app.ipa"></div>
+      </div>
+      <div class="hint">Choose a local IPA or enter a direct URL. Maximum local upload size: 5 GB.</div>
+    </div>
 
-  <h1>IPA Signer</h1>
-  <p class="subtitle">Sign an IPA using your own certificate.</p>
+    <div class="section">
+      <div class="section-title">Your signing certificate</div>
+      <div class="warning"><strong>Important:</strong> Use a certificate and provisioning profile you are authorized to use. The P12 password is sent to the signing service to process the certificate.</div>
+      <div class="grid">
+        <div class="field"><label for="p12-file">P12 certificate file</label><input id="p12-file" type="file" accept=".p12"></div>
+        <div class="field"><label for="p12-url">Or P12 certificate URL</label><input id="p12-url" type="url" placeholder="https://example.com/certificate.p12"></div>
+        <div class="field"><label for="prov-file">MobileProvision file</label><input id="prov-file" type="file" accept=".mobileprovision,.provisionprofile,.mobileprov"></div>
+        <div class="field"><label for="prov-url">Or MobileProvision URL</label><input id="prov-url" type="url" placeholder="https://example.com/profile.mobileprovision"></div>
+        <div class="field"><label for="p12-password">P12 password</label><input id="p12-password" type="password" autocomplete="off" placeholder="Enter P12 password"></div>
+      </div>
+      <div class="hint">For each certificate item, provide either a file or a direct URL, not both. URLs must be accessible to the signing backend.</div>
+    </div>
 
-  <form
-    id="uploadForm"
-    method="POST"
-    action="https://api.casp.dev/upload.php"
-    enctype="multipart/form-data"
-  >
+    <div class="section">
+      <div class="section-title">Optional app settings</div>
+      <div class="grid">
+        <div class="field"><label for="bundle-id">Bundle ID</label><input id="bundle-id" type="text" placeholder="com.example.app"></div>
+        <div class="field"><label for="bundle-name">Bundle name</label><input id="bundle-name" type="text" placeholder="Example App"></div>
+        <div class="field"><label for="bundle-version">Bundle version</label><input id="bundle-version" type="text" placeholder="1.0.0"></div>
+        <div class="field"><label for="sideload-app">Or sign a built-in app</label>
+          <select id="sideload-app">
+            <option value="">Do not use a built-in app</option>
+            <option value="nexstore">NexStore</option><option value="feather">Feather</option>
+            <option value="ksign">KSign</option><option value="esign">ESign</option><option value="cocosign">CocoSign</option>
+          </select>
+        </div>
+      </div>
+    </div>
 
-    <label for="name">App Name</label>
-    <input
-      type="text"
-      id="name"
-      name="name"
-      placeholder="Example: My App"
-      required
-    >
+    <div class="section">
+      <div class="section-title">Optional tweaks</div>
+      <input id="tweak-files" type="file" accept=".dylib,.deb" multiple>
+      <div id="tweak-list" class="hint">No tweaks selected.</div>
+      <div class="hint">.dylib and .deb files are sent to the signing backend for injection.</div>
+    </div>
 
-    <label for="p12">P12 Certificate</label>
-    <input
-      type="file"
-      id="p12"
-      name="p12"
-      accept=".p12"
-      required
-    >
+    <div class="actions">
+      <button id="sign-btn" class="primary" type="button">Sign IPA</button>
+      <button id="reset-btn" class="secondary" type="button">Reset</button>
+    </div>
+    <div class="progress" aria-label="Progress"><div id="progress-bar" class="bar"></div></div>
+    <div id="status" role="status" aria-live="polite">Ready.</div>
+  </section>
+  <p class="foot">This page uses the NexSideloading signing service. The service must permit requests from the domain hosting this file.</p>
+</main>
 
-    <label for="mobileprovision">MobileProvision</label>
-    <input
-      type="file"
-      id="mobileprovision"
-      name="mobileprovision"
-      accept=".mobileprovision"
-      required
-    >
-
-    <label for="ipa">IPA File</label>
-    <input
-      type="file"
-      id="ipa"
-      name="ipa"
-      accept=".ipa"
-      required
-    >
-
-    <label for="pass">Certificate Password</label>
-    <input
-      type="password"
-      id="pass"
-      name="pass"
-      placeholder="Certificate password"
-      required
-      autocomplete="off"
-    >
-
-    <button type="submit" id="submitButton">
-      SIGN IPA
-    </button>
-
-  </form>
-
-  <div id="status" role="status" aria-live="polite"></div>
-
-  <p class="notice">
-    Maximum file size: 3 GB.<br>
-    Use a valid, non-revoked certificate and matching provisioning profile.
-  </p>
-
-  <div class="credit">
-    Custom signing API example by
-    <a href="https://storage-eonhub.neocities.org/custom-sign"
-       target="_blank" rel="noopener">Eonhub</a>.
-  </div>
-
-</div>
-
+<script src="https://unpkg.com/tus-js-client/dist/tus.js"></script>
 <script>
-  const form = document.getElementById("uploadForm");
-  const button = document.getElementById("submitButton");
-  const status = document.getElementById("status");
+(() => {
+  'use strict';
 
-  const MAX_SIZE = 3 * 1024 * 1024 * 1024;
+  // This is the remote signing backend used by the supplied NexSideloading page.
+  // It is not a locally hosted signer.
+  const SIGNER_BASE = 'https://sideloading.net/api/sign';
+  const TUS_ENDPOINT = `${SIGNER_BASE}/uploads/`;
+  const SIGN_ENDPOINT = `${SIGNER_BASE}/tus-sign`;
+  const FINISHED_PAGE = 'https://sideloading.net/signer/finished.php';
+  const MAX_IPA_SIZE = 5 * 1024 * 1024 * 1024;
 
-  form.addEventListener("submit", function(event) {
-    const files = [
-      document.getElementById("p12").files[0],
-      document.getElementById("mobileprovision").files[0],
-      document.getElementById("ipa").files[0]
-    ];
+  const $ = id => document.getElementById(id);
+  const signBtn = $('sign-btn'), statusEl = $('status'), bar = $('progress-bar');
+  let activeUpload = null, activeSource = null, runId = 0;
+  let selectedTweaks = [];
 
-    for (const file of files) {
-      if (!file) {
-        event.preventDefault();
-        status.textContent = "Please select all required files.";
-        return;
-      }
+  function status(message) { statusEl.textContent = message; }
+  function progress(value) { bar.style.width = `${Math.max(0, Math.min(100, value))}%`; }
+  function busy(value) { signBtn.disabled = value; signBtn.textContent = value ? 'Working…' : 'Sign IPA'; }
+  function cleanup() {
+    if (activeSource) { activeSource.close(); activeSource = null; }
+    if (activeUpload && typeof activeUpload.abort === 'function') {
+      try { activeUpload.abort(); } catch (_) {}
+    }
+    activeUpload = null;
+  }
+  function friendlyError(raw) {
+    const message = String(raw || 'Something went wrong.').replace(/^Error:\s*/i, '').trim();
+    const lower = message.toLowerCase();
+    if (lower.includes('mac verify failure')) return 'The P12 password appears to be incorrect.';
+    if (lower.includes('mobileprovision')) return 'The provisioning profile could not be read. Check that it is a valid profile.';
+    if (lower.includes('zsign failed')) return 'Signing failed. Check the certificate, profile, and app settings.';
+    if (lower.includes('failed to fetch')) return 'Could not reach the signing service. Check network access and CORS settings.';
+    return message;
+  }
+  function fileNameFromUrl(value) {
+    try { return new URL(value).pathname.split('/').filter(Boolean).pop() || 'app.ipa'; }
+    catch (_) { return 'app.ipa'; }
+  }
+  function validateCertificate(form) {
+    const p12 = $('p12-file').files[0], p12Url = $('p12-url').value.trim();
+    const profile = $('prov-file').files[0], profileUrl = $('prov-url').value.trim();
+    const password = $('p12-password').value;
 
-      if (file.size > MAX_SIZE) {
-        event.preventDefault();
-        status.textContent = file.name + " exceeds the 3 GB limit.";
-        return;
-      }
+    if ((!p12 && !p12Url) || (p12 && p12Url)) throw new Error('Provide either a P12 file or a P12 URL.');
+    if ((!profile && !profileUrl) || (profile && profileUrl)) throw new Error('Provide either a MobileProvision file or a MobileProvision URL.');
+    if (!password) throw new Error('Enter the P12 password. If the P12 has no password, check whether the backend accepts an empty password.');
+
+    if (p12) form.append('p12', p12, p12.name);
+    else form.append('p12_url', p12Url);
+    if (profile) form.append('mobileprovision', profile, profile.name);
+    else form.append('mobileprovision_url', profileUrl);
+    form.append('p12_password', password);
+  }
+  function buildForm(uploadUrl, ipaSize, ipaUrl) {
+    const form = new FormData();
+    const builtIn = $('sideload-app').value;
+    if (builtIn) form.append('sideload_app', builtIn);
+    else if (ipaUrl) form.append('ipa_url', ipaUrl);
+    else {
+      form.append('upload_url', uploadUrl);
+      if (ipaSize) form.append('ipa_size', String(ipaSize));
     }
 
-    status.textContent = "Uploading files for signing. Please wait...";
-    button.disabled = true;
-    button.textContent = "SUBMITTING...";
-  });
-</script>
+    validateCertificate(form);
+    form.append('bundle_id', $('bundle-id').value.trim());
+    form.append('bundle_name', $('bundle-name').value.trim());
+    form.append('bundle_version', $('bundle-version').value.trim());
+    selectedTweaks.forEach((file, index) => form.append(`tweak_${index}`, file, file.name));
+    form.append('tweaks_count', String(selectedTweaks.length));
+    return form;
+  }
+  async function postSign(form, currentRun) {
+    const response = await fetch(SIGN_ENDPOINT, { method: 'POST', body: form });
+    const text = await response.text();
+    if (!response.ok) throw new Error(friendlyError(text || response.statusText));
+    let payload;
+    try { payload = JSON.parse(text); } catch (_) { throw new Error('The signing service returned an unreadable response.'); }
+    if (payload.stream_url) {
+      await watchProgress(payload.stream_url, payload.status_url, payload.job_id, currentRun);
+    } else {
+      progress(100); status('Done. IPA successfully signed.');
+      if (payload.job_id) goFinished(payload.job_id);
+    }
+  }
+  function goFinished(jobId) {
+    if (jobId) window.location.assign(`${FINISHED_PAGE}?job_id=${encodeURIComponent(jobId)}`);
+  }
+  function tusUpload(blob, filename, currentRun) {
+    return new Promise((resolve, reject) => {
+      if (!window.tus || !window.tus.Upload) return reject(new Error('The upload library did not load. Refresh and try again.'));
+      const task = new tus.Upload(blob, {
+        endpoint: TUS_ENDPOINT, chunkSize: 10 * 1024 * 1024, parallelUploads: 4,
+        retryDelays: [0, 1000, 3000, 5000],
+        metadata: { filename, filetype: blob.type || 'application/octet-stream' },
+        onError: reject,
+        onProgress(uploaded, total) {
+          if (currentRun !== runId) return;
+          const pct = total ? uploaded / total * 100 : 0;
+          progress(pct * .75); status(`Uploading IPA: ${pct.toFixed(0)}%`);
+        },
+        onSuccess() {
+          if (currentRun !== runId) return reject(new Error('Upload cancelled.'));
+          progress(75); resolve(task.url);
+        }
+      });
+      activeUpload = task; task.start();
+    });
+  }
+  async function watchProgress(streamUrl, statusUrl, jobId, currentRun) {
+    if (!window.EventSource) return poll(statusUrl, streamUrl, jobId, currentRun);
+    await new Promise((resolve, reject) => {
+      const source = new EventSource(streamUrl); activeSource = source;
+      const close = () => { source.close(); if (activeSource === source) activeSource = null; };
+      source.addEventListener('progress', event => {
+        if (currentRun !== runId) return;
+        try {
+          const data = JSON.parse(event.data || '{}');
+          if (data.stage === 'downloading') {
+            const pct = Number(data.download_progress || 0);
+            progress(pct * .75); status(`Downloading IPA: ${pct.toFixed(0)}%`);
+          } else {
+            const pct = Number(data.signing_progress || 0);
+            progress(Math.min(99, 75 + pct * .24)); status(`Signing IPA: ${pct.toFixed(0)}%`);
+          }
+        } catch (_) {}
+      });
+      source.addEventListener('done', event => {
+        if (currentRun !== runId) return;
+        let data = {}; try { data = JSON.parse(event.data || '{}'); } catch (_) {}
+        close(); progress(100); status('Done. IPA successfully signed.'); goFinished(data.job_id || jobId); resolve();
+      });
+      source.addEventListener('failed', event => {
+        if (currentRun !== runId) return;
+        let data = {}; try { data = JSON.parse(event.data || '{}'); } catch (_) {}
+        close(); reject(new Error(friendlyError(data.error || data.message || 'Signing failed.')));
+      });
+      source.onerror = () => { close(); reject(new Error('Live progress stream disconnected.')); };
+    }).catch(async error => {
+      if (statusUrl) return poll(statusUrl, streamUrl, jobId, currentRun);
+      throw error;
+    });
+  }
+  async function poll(statusUrl, streamUrl, jobId, currentRun) {
+    const url = statusUrl || (streamUrl || '').replace('/status/stream/', '/status/');
+    if (!url) throw new Error('No status endpoint was returned by the signer.');
+    while (currentRun === runId) {
+      const response = await fetch(url, { cache: 'no-cache' });
+      if (!response.ok) throw new Error(`Status request failed (${response.status}).`);
+      const data = await response.json();
+      if (data.stage === 'downloading') {
+        const pct = Number(data.download_progress || 0);
+        progress(pct * .75); status(`Downloading IPA: ${pct.toFixed(0)}%`);
+      } else {
+        const pct = Number(data.signing_progress || 0);
+        progress(Math.min(99, 75 + pct * .24)); status(`Signing IPA: ${pct.toFixed(0)}%`);
+      }
+      if (data.stage === 'done' || Number(data.signing_progress) >= 100) {
+        progress(100); status('Done. IPA successfully signed.'); goFinished(data.job_id || jobId); return;
+      }
+      if (data.stage === 'error') throw new Error(friendlyError(data.error || 'Signing failed.'));
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+  }
 
+  async function submit() {
+    const currentRun = ++runId; cleanup(); busy(true); progress(0); status('Preparing…');
+    try {
+      const builtIn = $('sideload-app').value;
+      const ipaFile = $('ipa-file').files[0];
+      const ipaUrl = $('ipa-url').value.trim();
+      if (builtIn && (ipaFile || ipaUrl)) throw new Error('Choose either a built-in app or an IPA file/URL, not both.');
+      if (!builtIn && !ipaFile && !ipaUrl) throw new Error('Choose an IPA file, enter an IPA URL, or select a built-in app.');
+      if (ipaFile && ipaUrl) throw new Error('Choose either an IPA file or an IPA URL, not both.');
+
+      if (builtIn || ipaUrl) {
+        status(builtIn ? 'Preparing built-in app…' : 'Sending IPA URL to signing service…');
+        progress(5);
+        await postSign(buildForm(null, null, ipaUrl), currentRun);
+      } else {
+        if (ipaFile.size > MAX_IPA_SIZE) throw new Error('IPA file exceeds the 5 GB limit.');
+        const uploadUrl = await tusUpload(ipaFile, ipaFile.name, currentRun);
+        if (currentRun !== runId) return;
+        status('Starting signing…');
+        await postSign(buildForm(uploadUrl, ipaFile.size, null), currentRun);
+      }
+    } catch (error) {
+      if (currentRun === runId) { progress(0); status(`Error: ${friendlyError(error.message || error)}`); }
+    } finally {
+      if (currentRun === runId) busy(false);
+    }
+  }
+
+  $('tweak-files').addEventListener('change', event => {
+    selectedTweaks = Array.from(event.target.files || []);
+    $('tweak-list').textContent = selectedTweaks.length
+      ? selectedTweaks.map(file => file.name).join(', ')
+      : 'No tweaks selected.';
+  });
+  signBtn.addEventListener('click', submit);
+  $('reset-btn').addEventListener('click', () => {
+    ++runId; cleanup(); document.querySelectorAll('input').forEach(input => {
+      if (input.type === 'file' || input.type === 'password' || input.type === 'text' || input.type === 'url') input.value = '';
+    });
+    $('sideload-app').value = ''; selectedTweaks = []; $('tweak-list').textContent = 'No tweaks selected.';
+    progress(0); status('Ready.'); busy(false);
+  });
+})();
+</script>
 </body>
 </html>
