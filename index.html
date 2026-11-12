@@ -14,10 +14,13 @@
     input[type=file]{padding:9px}input::placeholder{color:#778398}.hint{font-size:13px;color:var(--muted);margin-top:7px}
     .warning{background:#4a3518;color:#ffe0a5;border:1px solid #785a2c;padding:12px 14px;border-radius:10px;margin-bottom:15px}
     .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:22px}
-    button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 18px;font-weight:700}
+    button,.btn{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 18px;font-weight:700;text-decoration:none;display:inline-block;text-align:center;color:var(--text)}
     .primary{background:var(--accent);color:white;min-width:130px}.primary:hover{background:var(--accent2)}.primary:disabled{opacity:.55;cursor:wait}
     .secondary{background:#2a3446;color:var(--text)}.progress{height:9px;background:#30394a;border-radius:20px;overflow:hidden;margin-top:20px}.bar{height:100%;width:0;background:var(--accent);transition:width .2s}
     #status{color:var(--muted);font-size:14px;margin-top:10px;overflow-wrap:anywhere}.tweak-row{display:flex;gap:8px;align-items:center;margin-top:8px}.tweak-row span{flex:1;overflow-wrap:anywhere}.remove{padding:5px 10px;background:#3a2930;color:#ffb8b8}
+    .result{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.result h2{margin:0 0 4px;font-size:20px}
+    .result dl{margin:12px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}.result dt{color:var(--muted)}.result dd{margin:0;overflow-wrap:anywhere}
+    pre{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font-size:12px;max-height:260px;white-space:pre-wrap;overflow-wrap:anywhere}
     .foot{color:var(--muted);font-size:12px;text-align:center;margin:18px 0}.hidden{display:none!important}
     @media(max-width:600px){.grid{grid-template-columns:1fr}.panel{padding:18px}}
   </style>
@@ -81,6 +84,19 @@
     </div>
     <div class="progress" aria-label="Progress"><div id="progress-bar" class="bar"></div></div>
     <div id="status" role="status" aria-live="polite">Ready.</div>
+
+    <div id="result" class="result hidden">
+      <h2>Signing complete</h2>
+      <div class="hint">Your app has been signed successfully.</div>
+      <dl id="result-info"></dl>
+      <div class="actions">
+        <a id="install-btn" class="btn primary hidden" href="#">Install app</a>
+        <a id="download-btn" class="btn secondary hidden" href="#" target="_blank" rel="noopener">Download signed IPA</a>
+        <button id="again-btn" class="secondary" type="button">Sign another</button>
+      </div>
+      <div id="install-hint" class="hint">Open this page in Safari on your iPhone or iPad and tap Install app.</div>
+      <pre id="debug" class="hidden"></pre>
+    </div>
   </section>
   <p class="foot">This page uses the NexSideloading signing service. The service must permit requests from the domain hosting this file.</p>
 </main>
@@ -90,12 +106,10 @@
 (() => {
   'use strict';
 
-  // This is the remote signing backend used by the supplied NexSideloading page.
-  // It is not a locally hosted signer.
   const SIGNER_BASE = 'https://sideloading.net/api/sign';
+  const SIGNER_ORIGIN = 'https://sideloading.net';
   const TUS_ENDPOINT = `${SIGNER_BASE}/uploads/`;
   const SIGN_ENDPOINT = `${SIGNER_BASE}/tus-sign`;
-  const FINISHED_PAGE = 'https://sideloading.net/signer/finished.php';
   const MAX_IPA_SIZE = 5 * 1024 * 1024 * 1024;
 
   const $ = id => document.getElementById(id);
@@ -121,10 +135,6 @@
     if (lower.includes('zsign failed')) return 'Signing failed. Check the certificate, profile, and app settings.';
     if (lower.includes('failed to fetch')) return 'Could not reach the signing service. Check network access and CORS settings.';
     return message;
-  }
-  function fileNameFromUrl(value) {
-    try { return new URL(value).pathname.split('/').filter(Boolean).pop() || 'app.ipa'; }
-    catch (_) { return 'app.ipa'; }
   }
   function validateCertificate(form) {
     const p12 = $('p12-file').files[0], p12Url = $('p12-url').value.trim();
@@ -159,6 +169,94 @@
     form.append('tweaks_count', String(selectedTweaks.length));
     return form;
   }
+
+  /* ---------- Result handling (replaces the redirect) ---------- */
+  function absUrl(value) {
+    try { return new URL(value, SIGNER_ORIGIN).href; } catch (_) { return null; }
+  }
+  function collectStrings(value, key, out) {
+    if (typeof value === 'string') out.push({ key: key || '', value });
+    else if (Array.isArray(value)) value.forEach(v => collectStrings(v, key, out));
+    else if (value && typeof value === 'object') Object.keys(value).forEach(k => collectStrings(value[k], k, out));
+    return out;
+  }
+  function pickLinks(data) {
+    const items = collectStrings(data, '', []);
+    let itms = null, manifest = null, download = null;
+    for (const { key, value } of items) {
+      const v = value.trim();
+      if (!itms && /^itms-services:\/\//i.test(v)) itms = v;
+    }
+    if (!itms) {
+      for (const { key, value } of items) {
+        const v = value.trim();
+        if (!manifest && /^(https?:\/\/|\/)/i.test(v) && (/\.plist(\?|#|$)/i.test(v) || /manifest|plist/i.test(key))) manifest = absUrl(v);
+      }
+    }
+    for (const { key, value } of items) {
+      const v = value.trim();
+      if (!download && /^(https?:\/\/|\/)/i.test(v) && !/\.plist(\?|#|$)/i.test(v) && !/manifest|plist|stream|status/i.test(key) &&
+          (/\.ipa(\?|#|$)/i.test(v) || /download|ipa|signed/i.test(key))) download = absUrl(v);
+    }
+    if (!itms && manifest) itms = `itms-services://?action=download-manifest&url=${encodeURIComponent(manifest)}`;
+    return { itms, download };
+  }
+  function pickField(data, regex) {
+    const hit = collectStrings(data, '', []).find(x => regex.test(x.key) && x.value.trim());
+    return hit ? hit.value.trim() : '';
+  }
+  function addInfo(label, value) {
+    if (!value) return;
+    const dt = document.createElement('dt'), dd = document.createElement('dd');
+    dt.textContent = label; dd.textContent = value;
+    $('result-info').append(dt, dd);
+  }
+  function showResult(data) {
+    const { itms, download } = pickLinks(data);
+    const info = $('result-info'); info.textContent = '';
+    const exp = pickField(data, /expir/i);
+    const cert = pickField(data, /signed_?with|cert(ificate)?_?name|team/i);
+    addInfo('App', pickField(data, /^(bundle_?name|app_?name|name)$/i));
+    addInfo('Bundle ID', pickField(data, /^bundle_?id$/i));
+    addInfo('Expires', exp);
+    addInfo('Signed with', cert);
+
+    const installBtn = $('install-btn'), dlBtn = $('download-btn'), debug = $('debug');
+    installBtn.classList.toggle('hidden', !itms);
+    if (itms) installBtn.href = itms;
+    dlBtn.classList.toggle('hidden', !download);
+    if (download) dlBtn.href = download;
+
+    if (!itms) {
+      $('install-hint').textContent = 'Signing finished, but the service did not return an install link I could recognise. The raw response is shown below.';
+      debug.textContent = JSON.stringify(data, null, 2);
+      debug.classList.remove('hidden');
+    } else {
+      $('install-hint').textContent = 'Open this page in Safari on your iPhone or iPad and tap Install app.';
+      debug.classList.add('hidden');
+    }
+    $('result').classList.remove('hidden');
+    $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  function hideResult() {
+    $('result').classList.add('hidden');
+    $('result-info').textContent = '';
+    $('debug').textContent = '';
+  }
+  async function finish(jobId, statusUrl, hint) {
+    let data = Object.assign({}, hint || {});
+    const url = statusUrl || (jobId ? `${SIGNER_BASE}/status/${encodeURIComponent(jobId)}` : null);
+    if (url) {
+      try {
+        const response = await fetch(url, { cache: 'no-cache' });
+        if (response.ok) data = Object.assign(data, await response.json());
+      } catch (_) {}
+    }
+    if (!data.job_id && jobId) data.job_id = jobId;
+    progress(100); status('Done. IPA successfully signed.');
+    showResult(data);
+  }
+
   async function postSign(form, currentRun) {
     const response = await fetch(SIGN_ENDPOINT, { method: 'POST', body: form });
     const text = await response.text();
@@ -167,13 +265,9 @@
     try { payload = JSON.parse(text); } catch (_) { throw new Error('The signing service returned an unreadable response.'); }
     if (payload.stream_url) {
       await watchProgress(payload.stream_url, payload.status_url, payload.job_id, currentRun);
-    } else {
-      progress(100); status('Done. IPA successfully signed.');
-      if (payload.job_id) goFinished(payload.job_id);
+    } else if (currentRun === runId) {
+      await finish(payload.job_id, payload.status_url, payload);
     }
-  }
-  function goFinished(jobId) {
-    if (jobId) window.location.assign(`${FINISHED_PAGE}?job_id=${encodeURIComponent(jobId)}`);
   }
   function tusUpload(blob, filename, currentRun) {
     return new Promise((resolve, reject) => {
@@ -215,19 +309,24 @@
         } catch (_) {}
       });
       source.addEventListener('done', event => {
-        if (currentRun !== runId) return;
+        if (currentRun !== runId) { close(); return resolve(); }
         let data = {}; try { data = JSON.parse(event.data || '{}'); } catch (_) {}
-        close(); progress(100); status('Done. IPA successfully signed.'); goFinished(data.job_id || jobId); resolve();
+        close();
+        finish(data.job_id || jobId, statusUrl, data).then(resolve, reject);
       });
       source.addEventListener('failed', event => {
-        if (currentRun !== runId) return;
+        if (currentRun !== runId) { close(); return resolve(); }
         let data = {}; try { data = JSON.parse(event.data || '{}'); } catch (_) {}
-        close(); reject(new Error(friendlyError(data.error || data.message || 'Signing failed.')));
+        close();
+        const err = new Error(friendlyError(data.error || data.message || 'Signing failed.'));
+        err.final = true;
+        reject(err);
       });
       source.onerror = () => { close(); reject(new Error('Live progress stream disconnected.')); };
     }).catch(async error => {
-      if (statusUrl) return poll(statusUrl, streamUrl, jobId, currentRun);
-      throw error;
+      if (error && error.final) throw error;
+      if (currentRun !== runId) return;
+      return poll(statusUrl, streamUrl, jobId, currentRun);
     });
   }
   async function poll(statusUrl, streamUrl, jobId, currentRun) {
@@ -237,6 +336,10 @@
       const response = await fetch(url, { cache: 'no-cache' });
       if (!response.ok) throw new Error(`Status request failed (${response.status}).`);
       const data = await response.json();
+      if (data.stage === 'error') throw new Error(friendlyError(data.error || 'Signing failed.'));
+      if (data.stage === 'done' || Number(data.signing_progress) >= 100) {
+        await finish(data.job_id || jobId, url, data); return;
+      }
       if (data.stage === 'downloading') {
         const pct = Number(data.download_progress || 0);
         progress(pct * .75); status(`Downloading IPA: ${pct.toFixed(0)}%`);
@@ -244,16 +347,12 @@
         const pct = Number(data.signing_progress || 0);
         progress(Math.min(99, 75 + pct * .24)); status(`Signing IPA: ${pct.toFixed(0)}%`);
       }
-      if (data.stage === 'done' || Number(data.signing_progress) >= 100) {
-        progress(100); status('Done. IPA successfully signed.'); goFinished(data.job_id || jobId); return;
-      }
-      if (data.stage === 'error') throw new Error(friendlyError(data.error || 'Signing failed.'));
       await new Promise(resolve => setTimeout(resolve, 1200));
     }
   }
 
   async function submit() {
-    const currentRun = ++runId; cleanup(); busy(true); progress(0); status('Preparing…');
+    const currentRun = ++runId; cleanup(); hideResult(); busy(true); progress(0); status('Preparing…');
     try {
       const builtIn = $('sideload-app').value;
       const ipaFile = $('ipa-file').files[0];
@@ -280,6 +379,15 @@
     }
   }
 
+  function resetAll() {
+    ++runId; cleanup(); hideResult();
+    document.querySelectorAll('input').forEach(input => {
+      if (['file', 'password', 'text', 'url'].includes(input.type)) input.value = '';
+    });
+    $('sideload-app').value = ''; selectedTweaks = []; $('tweak-list').textContent = 'No tweaks selected.';
+    progress(0); status('Ready.'); busy(false);
+  }
+
   $('tweak-files').addEventListener('change', event => {
     selectedTweaks = Array.from(event.target.files || []);
     $('tweak-list').textContent = selectedTweaks.length
@@ -287,13 +395,8 @@
       : 'No tweaks selected.';
   });
   signBtn.addEventListener('click', submit);
-  $('reset-btn').addEventListener('click', () => {
-    ++runId; cleanup(); document.querySelectorAll('input').forEach(input => {
-      if (input.type === 'file' || input.type === 'password' || input.type === 'text' || input.type === 'url') input.value = '';
-    });
-    $('sideload-app').value = ''; selectedTweaks = []; $('tweak-list').textContent = 'No tweaks selected.';
-    progress(0); status('Ready.'); busy(false);
-  });
+  $('reset-btn').addEventListener('click', resetAll);
+  $('again-btn').addEventListener('click', () => { resetAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
 })();
 </script>
 </body>
