@@ -47,180 +47,963 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <div class="footer">SignHub · Independent project, not affiliated with Apple</div>
 </main>
 
-<script>
-const $ = id => document.getElementById(id);
-const API = 'https://signer.certdrop.app';
 
-function size(n) {
-  return n < 1048576
-    ? (n / 1024).toFixed(0) + ' KB'
-    : (n / 1048576).toFixed(1) + ' MB';
-}
-
-// File selection and display
-function bindFile(id, name, info, label, detail) {
-  $(id).addEventListener('change', e => {
-    const file = e.target.files[0];
-
-    $(name).textContent = file ? file.name : label;
-    $(info).textContent = file ? size(file.size) : detail;
-
-    check();
-  });
-}
-
-bindFile('ipa', 'ipaName', 'ipaInfo',
-  'Choose IPA file', 'Your .ipa app file');
-
-bindFile('cert', 'certName', 'certInfo',
-  'Choose certificate', 'Your Apple distribution certificate');
-
-bindFile('profile', 'profileName', 'profileInfo',
-  'Choose provisioning profile', '.mobileprovision file (required)');
-
-$('password').addEventListener('input', check);
-
-function check() {
-  $('sign').disabled = !(
-    $('ipa').files.length &&
-    $('cert').files.length &&
-    $('profile').files.length &&
-    $('password').value.length
-  );
-}
-
-// Read API errors
-async function readResponse(response) {
-  const text = await response.text();
-
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(text || `Server returned HTTP ${response.status}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(data.error || `HTTP ${response.status}`);
-  }
-
-  return data;
-}
-
-// Check signing progress
-function watchSigning(ticketId) {
-  const status = $('status');
-  let finished = false;
-
-  const poll = async () => {
-    if (finished) return;
-
-    try {
-      const response = await fetch(
-        `${API}/api/sign/status/${encodeURIComponent(ticketId)}`
-      );
-
-      if (!response.ok) return;
-
-      const result = await response.json();
-
-      if (result.status === 'success') {
-        finished = true;
-        clearInterval(timer);
-
-        if (!result.installUrl) {
-          status.textContent = 'Signing finished, but no install link was returned.';
-          return;
-        }
-
-        $('installLink').href = result.installUrl;
-        $('installLink').textContent = 'Install on iPhone';
-        $('install').style.display = 'block';
-
-        status.textContent = 'Successfully signed! Open the link in Safari on your iPhone.';
-      }
-
-      if (['failed', 'timeout', 'rejected'].includes(result.status)) {
-        finished = true;
-        clearInterval(timer);
-        status.textContent = result.error || 'Signing failed.';
-      }
-
-      if (result.status === 'queued') {
-        status.textContent = result.queuePosition
-          ? `Waiting in queue (#${result.queuePosition})...`
-          : 'Waiting in signing queue...';
-      }
-
-      if (result.status === 'in_progress') {
-        status.textContent = 'Signing your IPA...';
-      }
-
-    } catch (error) {
-      console.error('Status check failed:', error);
-    }
-  };
-
-  const timer = setInterval(poll, 3000);
-  poll();
-
-  setTimeout(() => {
-    if (!finished) {
-      clearInterval(timer);
-      status.textContent = 'Signing is taking longer than expected. Check again later.';
-    }
-  }, 300000);
-}
-
-// Sign IPA
-$('sign').addEventListener('click', async () => {
-  const btn = $('sign');
-  const status = $('status');
-
-  btn.disabled = true;
-  $('install').style.display = 'none';
-
-  try {
-    const ipa = $('ipa').files[0];
-
-    if (ipa.size > 64 * 1024 * 1024) {
-      throw new Error('This version supports IPA files up to 64 MB.');
+  <script>
+    // ---- Utilities ----
+    function fmt(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1048576).toFixed(1) + ' MB';
     }
 
-    status.textContent = 'Uploading IPA...';
+    function showPanel(id) {
+      document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+      document.getElementById(id).classList.add('active');
+    }
 
-    const formData = new FormData();
-    formData.append('ipa', ipa);
-    formData.append('p12', $('cert').files[0]);
-    formData.append('mobileprovision', $('profile').files[0]);
-    formData.append('password', $('password').value);
+    // ---- File drop zones ----
+    var fields = [
+      { zone: 'zone-ipa',  input: 'file-ipa',  info: 'info-ipa',  name: 'name-ipa',  size: 'size-ipa',  err: 'err-ipa',  maxMb: 500, ext: '.ipa' },
+      { zone: 'zone-p12',  input: 'file-p12',  info: 'info-p12',  name: 'name-p12',  size: 'size-p12',  err: 'err-p12',  maxMb: 5,   ext: '.p12' },
+      { zone: 'zone-prov', input: 'file-prov', info: 'info-prov', name: 'name-prov', size: 'size-prov', err: 'err-prov', maxMb: 5,   ext: '.mobileprovision' }
+    ];
 
-    const response = await fetch(`${API}/api/sign`, {
-      method: 'POST',
-      body: formData
+    fields.forEach(function(f) {
+      var zone  = document.getElementById(f.zone);
+      var input = document.getElementById(f.input);
+
+      // Drag events
+      zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+      zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
+      zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        var file = e.dataTransfer.files[0];
+        if (file) applyFile(f, file);
+      });
+
+      // Click opens file picker (handled via <input> overlay)
+      input.addEventListener('change', function() {
+        if (input.files[0]) applyFile(f, input.files[0]);
+      });
     });
 
-    const result = await readResponse(response);
+    function applyFile(f, file) {
+      var zone = document.getElementById(f.zone);
+      var errEl = document.getElementById(f.err);
+      errEl.textContent = '';
+      zone.classList.remove('invalid');
 
-    if (!result.ticketId) {
-      throw new Error(result.error || 'The server did not return a signing ticket.');
+      // Extension check
+      if (!file.name.toLowerCase().endsWith(f.ext)) {
+        errEl.textContent = 'Wrong file type. Expected ' + f.ext;
+        zone.classList.add('invalid');
+        return;
+      }
+      // Size check
+      if (file.size > f.maxMb * 1024 * 1024) {
+        errEl.textContent = 'File too large (max ' + f.maxMb + ' MB)';
+        zone.classList.add('invalid');
+        return;
+      }
+
+      // Show file info
+      document.getElementById(f.name).textContent = file.name;
+      document.getElementById(f.size).textContent = fmt(file.size);
+      zone.classList.add('has-file');
+
+      // Attach file to the hidden input (reassign via DataTransfer for drop events)
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      document.getElementById(f.input).files = dt.files;
     }
 
-    status.textContent = 'Your IPA was uploaded. Signing started...';
+    // ---- Password toggle ----
+    var pwInput = document.getElementById('input-password');
+    document.getElementById('toggle-pw').addEventListener('click', function() {
+      pwInput.type = pwInput.type === 'password' ? 'text' : 'password';
+      this.textContent = pwInput.type === 'password' ? '👁' : '🙈';
+    });
 
-    watchSigning(result.ticketId);
+    // ---- Validation ----
+    function validate() {
+      var ok = true;
+      fields.forEach(function(f) {
+        var input = document.getElementById(f.input);
+        var errEl = document.getElementById(f.err);
+        var zone  = document.getElementById(f.zone);
+        if (!input.files || !input.files[0]) {
+          errEl.textContent = f.ext + ' file is required';
+          zone.classList.add('invalid');
+          ok = false;
+        }
+      });
+      var pw = pwInput.value.trim();
+      var pwErr = document.getElementById('err-password');
+      if (!pw) {
+        pwErr.textContent = 'Password is required';
+        ok = false;
+      } else {
+        pwErr.textContent = '';
+      }
+      return ok;
+    }
 
-  } catch (error) {
-    console.error(error);
+    // ---- Submit ----
+    var resultData = null;
+    var expiryInterval = null;
+    var currentTicketId = null;
 
-    status.textContent = error.message === 'Failed to fetch'
-      ? 'Connection failed. CertDrop may block requests from GitHub Pages (CORS).'
-      : error.message;
+    document.getElementById('btn-sign').addEventListener('click', function() {
+      if (!validate()) return;
+      submitForm();
+    });
 
-  } finally {
-    check();
+
+    // certdrop-cloudflare-chunked-upload-v1: upload IPA in Cloudflare-safe parts.
+    // The P12/profile/password are only sent to the existing signer at finish.
+    function largeUploadError(response, fallback) {
+      return response.text().then(function(text) {
+        try {
+          var parsed = JSON.parse(text);
+          if (parsed && typeof parsed.error === 'string') return new Error(parsed.error);
+        } catch (ignored) {}
+        return new Error(fallback + ' (HTTP ' + response.status + ')');
+      });
+    }
+
+    function sendLargeUploadPart(upload, index, blob, progress) {
+      return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/sign/chunks/' + encodeURIComponent(upload.uploadId) + '/part/' + index);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.setRequestHeader('X-CertDrop-Chunk-Key', upload.key);
+        xhr.timeout = 120000;
+        xhr.upload.addEventListener('progress', function(event) {
+          if (event.lengthComputable) progress(event.loaded);
+        });
+        xhr.addEventListener('load', function() {
+          if (xhr.status >= 200 && xhr.status < 300) return resolve();
+          var message = 'Part ' + (index + 1) + ' failed (HTTP ' + xhr.status + ').';
+          try { message = JSON.parse(xhr.responseText).error || message; } catch (ignored) {}
+          reject(new Error(message));
+        });
+        xhr.addEventListener('error', function() { reject(new Error('Upload connection interrupted.')); });
+        xhr.addEventListener('timeout', function() { reject(new Error('Upload part timed out.')); });
+        xhr.send(blob);
+      });
+    }
+
+    async function uploadLargeIpa(file, progress) {
+      var startResponse = await fetch('/api/sign/chunks/start', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, fileSize: file.size })
+      });
+      if (!startResponse.ok) throw await largeUploadError(startResponse, 'Could not start large upload');
+      var upload = await startResponse.json();
+      if (!upload.uploadId || !upload.key || !upload.chunkSize || upload.chunkSize > 8 * 1024 * 1024) {
+        throw new Error('Invalid large-upload response.');
+      }
+      var parts = Math.ceil(file.size / upload.chunkSize);
+      for (var i = 0; i < parts; i++) {
+        var offset = i * upload.chunkSize;
+        var blob = file.slice(offset, Math.min(file.size, offset + upload.chunkSize));
+        var completed = false;
+        for (var attempt = 0; attempt < 3 && !completed; attempt++) {
+          try {
+            await sendLargeUploadPart(upload, i, blob, function(loaded) {
+              progress(Math.min(file.size, offset + loaded) / file.size);
+            });
+            completed = true;
+          } catch (err) {
+            if (attempt === 2 || /in order|expired|not found|Invalid/i.test(err.message)) throw err;
+            await new Promise(function(done) { setTimeout(done, 650 * (attempt + 1)); });
+          }
+        }
+        progress(Math.min(1, (offset + blob.size) / file.size));
+      }
+      return upload;
+    }
+
+    function submitForm() {
+      if (window.certdropSignerAnalytics) {
+        window.certdropSignerAnalytics('signer_submit');
+      }
+
+      var ipaFile  = document.getElementById('file-ipa').files[0];
+      var p12File  = document.getElementById('file-p12').files[0];
+      var provFile = document.getElementById('file-prov').files[0];
+      var pw       = pwInput.value;
+
+      var fd = new FormData();
+      fd.append('ipa', ipaFile);
+      fd.append('p12', p12File);
+      fd.append('mobileprovision', provFile);
+      fd.append('password', pw);
+
+      var bundleIdOverrideEl = document.getElementById('input-bundle-id-override');
+      var appVersionOverrideEl = document.getElementById('input-app-version-override');
+
+      if (bundleIdOverrideEl && bundleIdOverrideEl.value.trim()) {
+        fd.append('bundleIdOverride', bundleIdOverrideEl.value.trim());
+      }
+
+      if (appVersionOverrideEl && appVersionOverrideEl.value.trim()) {
+        fd.append('appVersionOverride', appVersionOverrideEl.value.trim());
+      }
+
+      showPanel('panel-progress');
+      document.getElementById('progress-wrap').style.display = 'block';
+      document.getElementById('spinner-signing').style.display = 'none';
+      document.getElementById('progress-fill').style.width = '0%';
+      document.getElementById('progress-pct').textContent = '0%';
+      document.getElementById('progress-label-text').textContent = 'Uploading...';
+
+      var chunkMode = ipaFile.size > 64 * 1024 * 1024;
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/sign');
+
+      xhr.upload.addEventListener('progress', function(e) {
+        if (chunkMode) return; // Large IPA progress is tracked per individual part.
+        if (e.lengthComputable) {
+          var pct = Math.round((e.loaded / e.total) * 100);
+          document.getElementById('progress-fill').style.width = pct + '%';
+          document.getElementById('progress-pct').textContent = pct + '%';
+          if (pct === 100) {
+            document.getElementById('progress-wrap').style.display = 'none';
+            document.getElementById('spinner-signing').style.display = 'block';
+            document.getElementById('spinner-text').innerHTML =
+              'Queued and uploading files...<br><small style="font-size:11px;opacity:.6">Waiting for signing slot</small>';
+          }
+        }
+      });
+
+      xhr.addEventListener('load', function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var data = JSON.parse(xhr.responseText);
+            currentTicketId = data.ticketId || null;
+
+            if (data.queued) {
+              if (window.certdropSignerAnalytics) {
+                window.certdropSignerAnalytics('signer_queued');
+              }
+
+              // Job is queued — connect SSE for real-time progress (keeps HTTP alive)
+              var position = data.queuePosition || 1;
+              document.getElementById('spinner-text').innerHTML =
+                'You are #' + position + ' in queue<br><small style="font-size:11px;opacity:.6">Starting shortly...</small>';
+              connectSigningStream(data.ticketId);
+            } else {
+              if (window.certdropSignerAnalytics) {
+                window.certdropSignerAnalytics('signer_completed');
+              }
+
+              // Direct success (shouldn't happen with queue, but handle anyway)
+              showResult(data);
+            }
+          } catch(e) {
+            showError('Server returned an invalid response.', null);
+          }
+        } else {
+          var ticketId = null;
+          // Retain a meaningful HTTP explanation if a reverse proxy returns
+          // an HTML error instead of JSON, before any ticket can be created.
+          var httpErrorMessages = {
+            400: 'Upload rejected (HTTP 400). Check your file types and advanced options.',
+            411: 'Upload rejected (HTTP 411). The request was missing a valid size header.',
+            413: 'Upload rejected (HTTP 413). The request may exceed the upload size limit.',
+            429: 'Too many signing attempts (HTTP 429). Please try again later.',
+            502: 'The signing gateway is temporarily unavailable (HTTP 502). Please retry later.',
+            503: 'The signer is temporarily busy or unavailable (HTTP 503). Please retry shortly.',
+            504: 'The signing gateway timed out (HTTP 504). Please retry later.'
+          };
+          var msg = httpErrorMessages[xhr.status] ||
+            ('Signing request failed (HTTP ' + xhr.status + '). Please try again.');
+          try {
+            var err = JSON.parse(xhr.responseText);
+            if (typeof err.error === 'string' && err.error.trim()) msg = err.error;
+            if (err.ticketId) ticketId = err.ticketId;
+            else if (err.requestId) ticketId = 'UPLOAD-' + err.requestId;
+          } catch(e) {}
+          if (!ticketId) {
+            var requestRef = xhr.getResponseHeader('X-CertDrop-Request-Id');
+            if (requestRef && /^[a-f0-9]{16}$/i.test(requestRef)) {
+              ticketId = 'UPLOAD-' + requestRef;
+            }
+          }
+          if (window.certdropSignerAnalytics) {
+            window.certdropSignerAnalytics('signer_failed');
+          }
+
+          showError(msg, ticketId);
+        }
+      });
+
+      xhr.addEventListener('error', function() {
+        if (window.certdropSignerAnalytics) {
+          window.certdropSignerAnalytics('signer_failed');
+        }
+
+        showError('Network error. Check your connection and try again.', null);
+      });
+
+      xhr.addEventListener('timeout', function() {
+        if (window.certdropSignerAnalytics) {
+          window.certdropSignerAnalytics('signer_failed');
+        }
+
+        showError('Request timed out. Large IPAs can take a few minutes — please try again.', null);
+      });
+
+      xhr.timeout = 300000;
+
+      // Attach advanced override values immediately before sending request.
+      var bundleInputFinal =
+        document.getElementById('bundleIdOverride') ||
+        document.querySelector('[name="bundleIdOverride"]');
+
+      var versionInputFinal =
+        document.getElementById('appVersionOverride') ||
+        document.querySelector('[name="appVersionOverride"]');
+
+      var bundleFinal = bundleInputFinal && bundleInputFinal.value ? bundleInputFinal.value.trim() : '';
+      var versionFinal = versionInputFinal && versionInputFinal.value ? versionInputFinal.value.trim() : '';
+
+      var validBundleIdOverride = /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+      var validAppVersionOverride = /^[0-9A-Za-z.+_-]{1,40}$/;
+      var overrideStatusFinal = document.getElementById('advancedOverrideStatus');
+
+      if (bundleFinal && !validBundleIdOverride.test(bundleFinal)) {
+        if (overrideStatusFinal) {
+          overrideStatusFinal.style.color = 'var(--error)';
+          overrideStatusFinal.textContent =
+            'Invalid Bundle ID. Use a value like com.company.app, or leave it empty to preserve the original Bundle ID.';
+        }
+        showPanel('panel-upload');
+        if (bundleInputFinal) bundleInputFinal.focus();
+        return;
+      }
+
+      if (versionFinal && !validAppVersionOverride.test(versionFinal)) {
+        if (overrideStatusFinal) {
+          overrideStatusFinal.style.color = 'var(--error)';
+          overrideStatusFinal.textContent =
+            'Invalid app version override. Use letters, numbers, dots, +, _ or - only.';
+        }
+        showPanel('panel-upload');
+        if (versionInputFinal) versionInputFinal.focus();
+        return;
+      }
+
+      if (overrideStatusFinal) {
+        overrideStatusFinal.style.color = 'var(--muted)';
+      }
+
+      fd.delete('bundleIdOverride');
+      fd.delete('appVersionOverride');
+
+      if (bundleFinal) {
+        fd.append('bundleIdOverride', bundleFinal);
+      }
+
+      if (versionFinal) {
+        fd.append('appVersionOverride', versionFinal);
+      }
+
+      if (overrideStatusFinal) {
+        overrideStatusFinal.textContent = bundleFinal || versionFinal
+          ? 'Advanced values attached before upload.'
+          : 'No advanced values entered.';
+      }
+
+      if (chunkMode) {
+        fd.delete('ipa'); // Only certificates and options are sent in the final request.
+        uploadLargeIpa(ipaFile, function(fraction) {
+          var pct = Math.min(100, Math.round(fraction * 100));
+          document.getElementById('progress-fill').style.width = pct + '%';
+          document.getElementById('progress-pct').textContent = pct + '%';
+          document.getElementById('progress-label-text').textContent = 'Uploading IPA in secure parts...';
+        }).then(function(upload) {
+          document.getElementById('progress-wrap').style.display = 'none';
+          document.getElementById('spinner-signing').style.display = 'block';
+          document.getElementById('spinner-text').textContent = 'IPA uploaded. Preparing signing job...';
+          xhr.open('POST', '/api/sign/chunks/' + encodeURIComponent(upload.uploadId) + '/finish');
+          xhr.setRequestHeader('X-CertDrop-Chunk-Key', upload.key);
+          xhr.send(fd);
+        }).catch(function(err) {
+          if (window.certdropSignerAnalytics) window.certdropSignerAnalytics('signer_failed');
+          showError(err.message || 'Could not upload IPA. Please try again.', null);
+        });
+      } else {
+        xhr.send(fd);
+      }
+    }
+
+    /**
+     * Connect to SSE endpoint for real-time signing progress.
+     * WHY SSE instead of polling: keeps an active HTTP connection during signing
+     * so Render doesn't restart the instance mid-zsign.
+     * Falls back to polling if EventSource is unavailable.
+     */
+    function connectSigningStream(ticketId) {
+      if (typeof EventSource === 'undefined') {
+        // Browser doesn't support SSE — fall back to polling
+        pollSigningStatus(ticketId);
+        return;
+      }
+
+      var es = new EventSource('/api/sign/stream/' + encodeURIComponent(ticketId));
+      var closed = false;
+
+      function cleanup() {
+        if (!closed) { closed = true; es.close(); }
+      }
+
+      es.addEventListener('in_progress', function(e) {
+        document.getElementById('spinner-text').innerHTML =
+          'Signing your IPA...<br><small style="font-size:11px;opacity:.6">Larger apps may take several minutes. Please keep this page open.</small>';
+      });
+
+      es.addEventListener('uploading_original', function() {
+        document.getElementById('spinner-text').innerHTML =
+          'Backing up your IPA...<br><small style="font-size:11px;opacity:.6">Uploading to secure storage</small>';
+      });
+
+      es.addEventListener('writing_files', function() {
+        document.getElementById('spinner-text').innerHTML =
+          'Preparing files...<br><small style="font-size:11px;opacity:.6">Writing to signing environment</small>';
+      });
+
+      es.addEventListener('signing', function() {
+        document.getElementById('spinner-text').innerHTML =
+          'Signing your IPA...<br><small style="font-size:11px;opacity:.6">Running zsign — this is the main step</small>';
+      });
+
+      es.addEventListener('uploading_signed', function() {
+        document.getElementById('spinner-text').innerHTML =
+          'Almost done...<br><small style="font-size:11px;opacity:.6">Uploading signed IPA</small>';
+      });
+
+      es.addEventListener('complete', function(e) {
+        cleanup();
+
+        if (window.certdropSignerAnalytics) {
+          window.certdropSignerAnalytics('signer_completed');
+        }
+
+        try {
+          var data = JSON.parse(e.data);
+          showResult({
+            id: data.id || data.signedIpaId,
+            installUrl: data.installUrl,
+            appName: data.appName,
+            bundleId: data.bundleId,
+            expiresAt: data.expiresAt,
+            ticketId: ticketId
+          });
+        } catch(err) {
+          showError('Signing may have succeeded but response was invalid. Check /install page.', ticketId);
+        }
+      });
+
+      es.addEventListener('failed', function(e) {
+        cleanup();
+
+        if (window.certdropSignerAnalytics) {
+          window.certdropSignerAnalytics('signer_failed');
+        }
+
+        try {
+          var data = JSON.parse(e.data);
+          showError(data.error || 'Signing failed.', ticketId);
+        } catch(err) {
+          showError('Signing failed.', ticketId);
+        }
+      });
+
+      es.onerror = function() {
+        // SSE connection lost — fall back to polling
+        cleanup();
+        console.warn('[signer] SSE connection lost, falling back to polling');
+        pollSigningStatus(ticketId);
+      };
+
+      // Safety: close after 5 minutes
+      setTimeout(function() { cleanup(); }, 300000);
+    }
+
+    /**
+     * Fallback: poll /api/sign/status/:ticketId until signing is complete.
+     * Used when SSE is unavailable or connection drops.
+     */
+    function pollSigningStatus(ticketId) {
+      var pollInterval = setInterval(function() {
+        fetch('/api/sign/status/' + encodeURIComponent(ticketId), { credentials: 'include' })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(status) {
+            if (!status) return;
+
+            if (status.status === 'in_progress') {
+              document.getElementById('spinner-text').innerHTML =
+                'Signing your IPA...<br><small style="font-size:11px;opacity:.6">Larger apps may take several minutes. Please keep this page open.</small>';
+            } else if (status.status === 'queued') {
+              if (status.queuePosition) {
+                document.getElementById('spinner-text').innerHTML =
+                  'You are #' + status.queuePosition + ' in queue<br><small style="font-size:11px;opacity:.6">Starting shortly...</small>';
+              }
+            } else if (status.status === 'success') {
+              clearInterval(pollInterval);
+              showResult({
+                id: status.signedIpaId || (status.installUrl ? status.installUrl.split('/install/')[1] : null),
+                installUrl: status.installUrl,
+                appName: status.appName,
+                bundleId: status.bundleId,
+                expiresAt: status.expiresAt,
+                ticketId: ticketId
+              });
+            } else if (status.status === 'failed' || status.status === 'timeout' || status.status === 'rejected') {
+              clearInterval(pollInterval);
+              var msg = status.error || 'Signing failed. Please try again.';
+              showError(msg, ticketId);
+            }
+          })
+          .catch(function() {
+            // Network error on poll — keep trying
+          });
+      }, 3000);
+
+      // Safety net: stop polling after 5 minutes
+      setTimeout(function() { clearInterval(pollInterval); }, 300000);
+    }
+
+    function showError(msg, ticketId) {
+      var displayMsg = msg;
+      if (ticketId) {
+        displayMsg += '\n\nReference: ' + ticketId;
+      }
+      var errEl = document.getElementById('error-msg');
+      errEl.textContent = displayMsg;
+      showPanel('panel-error');
+    }
+
+    function showResult(data) {
+      resultData = data;
+      document.getElementById('result-app-name').textContent = data.appName || 'Signed App';
+      document.getElementById('result-bundle').textContent = data.bundleId || '';
+      document.getElementById('install-url-box').textContent = data.installUrl;
+      document.getElementById('btn-install-result').href = data.installUrl;
+
+      // Show ticket ID in result panel if available
+      var ticketEl = document.createElement('div');
+      ticketEl.style.cssText = 'text-align:center;font-size:.75rem;color:var(--muted);margin-top:8px;font-family:var(--mono)';
+      ticketEl.textContent = 'Reference: ' + (data.ticketId || currentTicketId || 'N/A');
+      document.getElementById('btn-sign-another').parentNode.insertBefore(
+        ticketEl,
+        document.getElementById('btn-sign-another')
+      );
+
+      if (expiryInterval) clearInterval(expiryInterval);
+      var expiry = new Date(data.expiresAt).getTime();
+      function updateExpiry() {
+        var diff = expiry - Date.now();
+        if (diff <= 0) {
+          document.getElementById('result-expiry').textContent = 'This link has expired';
+          clearInterval(expiryInterval);
+          return;
+        }
+        var h = Math.floor(diff / 3600000);
+        var m = Math.floor((diff % 3600000) / 60000);
+        document.getElementById('result-expiry').textContent = 'Link expires in ' + h + 'h ' + m + 'm';
+      }
+      updateExpiry();
+      expiryInterval = setInterval(updateExpiry, 30000);
+
+      showPanel('panel-result');
+    }
+
+// Copy link
+    document.getElementById('btn-copy').addEventListener('click', function() {
+      if (!resultData) return;
+      navigator.clipboard.writeText(resultData.installUrl).then(function() {
+        var btn = document.getElementById('btn-copy');
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('copied');
+        setTimeout(function() {
+          btn.textContent = 'Copy Install Link';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    });
+
+    // Retry
+    document.getElementById('btn-retry').addEventListener('click', function() {
+      showPanel('panel-upload');
+    });
+
+    // Sign Another
+    document.getElementById('btn-sign-another').addEventListener('click', function() {
+      // Reset all fields
+      fields.forEach(function(f) {
+        var zone  = document.getElementById(f.zone);
+        var input = document.getElementById(f.input);
+        var errEl = document.getElementById(f.err);
+        zone.classList.remove('has-file', 'invalid', 'drag-over');
+        errEl.textContent = '';
+        input.value = '';
+      });
+      pwInput.value = '';
+      document.getElementById('err-password').textContent = '';
+      resultData = null;
+      if (expiryInterval) clearInterval(expiryInterval);
+      showPanel('panel-upload');
+    });
+  </script>
+
+<script>
+(function () {
+  'use strict';
+
+  var VISITOR_KEY = 'certdrop_visitor_id_v1';
+  var SESSION_KEY = 'certdrop_signer_session_id_v1';
+  var PAGE_SEEN_KEY = 'certdrop_signer_page_seen_v1';
+
+  function anonymousId(prefix) {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return prefix + '_' + window.crypto.randomUUID();
+      }
+    } catch (error) {}
+
+    return prefix + '_' + Date.now().toString(36) + '_' +
+      Math.random().toString(36).slice(2);
   }
-});
+
+  function storedId(storage, key, prefix) {
+    try {
+      var value = storage.getItem(key);
+      if (!value) {
+        value = anonymousId(prefix);
+        storage.setItem(key, value);
+      }
+      return value;
+    } catch (error) {
+      return anonymousId(prefix);
+    }
+  }
+
+  var visitorId = storedId(localStorage, VISITOR_KEY, 'v');
+  var sessionId = storedId(sessionStorage, SESSION_KEY, 's');
+
+  // certdrop-signer-cross-domain-attribution-v1
+  // Carry this signer session through the existing internal UTM channel so
+  // main-site order attribution can be joined back to signer analytics.
+  function attachSignerBridge() {
+    document.querySelectorAll('a[href]').forEach(function (link) {
+      try {
+        var destination = new URL(link.href, window.location.href);
+
+        if (destination.hostname !== 'certdrop.app') return;
+        if (destination.searchParams.get('utm_source') !== 'signer_cta') return;
+
+        destination.searchParams.set('utm_term', sessionId);
+        link.href = destination.toString();
+      } catch (error) {}
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachSignerBridge, {
+      once: true
+    });
+  } else {
+    attachSignerBridge();
+  }
+
+  function deviceType() {
+    var ua = navigator.userAgent || '';
+
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'apple_mobile';
+    if (/Android/i.test(ua)) return 'android';
+    if (/Windows|Macintosh|Linux/i.test(ua)) return 'desktop';
+
+    return 'unknown';
+  }
+
+  function sendSignerAnalytics(event, extra) {
+    var payload = Object.assign({
+      event: event,
+      visitor_id: visitorId,
+      session_id: sessionId,
+      device_type: deviceType(),
+      referrer: document.referrer || ''
+    }, extra || {});
+
+    try {
+      var body = JSON.stringify(payload);
+
+      if (navigator.sendBeacon) {
+        var blob = new Blob([body], { type: 'application/json' });
+        if (navigator.sendBeacon('/api/analytics/event', blob)) return;
+      }
+
+      fetch('/api/analytics/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+        keepalive: true,
+        credentials: 'same-origin'
+      }).catch(function () {});
+    } catch (error) {}
+  }
+
+  window.certdropSignerAnalytics = sendSignerAnalytics;
+
+  try {
+    if (sessionStorage.getItem(PAGE_SEEN_KEY) !== '1') {
+      sessionStorage.setItem(PAGE_SEEN_KEY, '1');
+      sendSignerAnalytics('page_view');
+    }
+  } catch (error) {
+    sendSignerAnalytics('page_view');
+  }
+
+  var interactionSent = false;
+
+  function recordInteraction(type) {
+    if (interactionSent) return;
+    interactionSent = true;
+
+    sendSignerAnalytics('user_interaction', {
+      interaction_type: type
+    });
+
+    document.removeEventListener('pointerdown', pointerInteraction, true);
+    document.removeEventListener('keydown', keyboardInteraction, true);
+    window.removeEventListener('scroll', scrollInteraction);
+  }
+
+  function pointerInteraction(event) {
+    if (!event.isTrusted) return;
+    recordInteraction(
+      event.pointerType === 'touch' ? 'touch' : 'pointer'
+    );
+  }
+
+  function keyboardInteraction(event) {
+    if (!event.isTrusted) return;
+
+    if (
+      event.key === 'Tab' ||
+      event.key === 'Shift' ||
+      event.key === 'Control' ||
+      event.key === 'Alt' ||
+      event.key === 'Meta'
+    ) return;
+
+    recordInteraction('keyboard');
+  }
+
+  function scrollInteraction(event) {
+    if (!event.isTrusted) return;
+
+    if (
+      Math.abs(window.scrollY || window.pageYOffset || 0) >=
+      Math.max(160, Math.round(window.innerHeight * 0.20))
+    ) {
+      recordInteraction('scroll');
+    }
+  }
+
+  document.addEventListener('pointerdown', pointerInteraction, {
+    capture: true,
+    passive: true
+  });
+
+  document.addEventListener('keydown', keyboardInteraction, true);
+  window.addEventListener('scroll', scrollInteraction, { passive: true });
+
+  var visibleStartedAt =
+    document.visibilityState === 'visible' ? Date.now() : null;
+
+  var unsentVisibleMs = 0;
+  var heartbeatTimer = null;
+
+  function collectVisibleTime() {
+    if (visibleStartedAt === null) return;
+
+    var now = Date.now();
+    unsentVisibleMs += Math.max(0, now - visibleStartedAt);
+    visibleStartedAt = now;
+  }
+
+  function flushVisibleTime(force) {
+    collectVisibleTime();
+
+    var seconds = Math.floor(unsentVisibleMs / 1000);
+    if (seconds < 5 && !force) return;
+    if (seconds <= 0) return;
+
+    var sentSeconds = Math.min(seconds, 60);
+    unsentVisibleMs -= sentSeconds * 1000;
+
+    sendSignerAnalytics('session_heartbeat', {
+      engaged_seconds: sentSeconds
+    });
+  }
+
+  function startHeartbeat() {
+    if (heartbeatTimer) return;
+
+    heartbeatTimer = setInterval(function () {
+      if (document.visibilityState === 'visible') {
+        flushVisibleTime(false);
+      }
+    }, 30000);
+  }
+
+  function stopHeartbeat() {
+    if (!heartbeatTimer) return;
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') {
+      flushVisibleTime(true);
+      visibleStartedAt = null;
+      stopHeartbeat();
+      return;
+    }
+
+    visibleStartedAt = Date.now();
+    startHeartbeat();
+  });
+
+  window.addEventListener('pagehide', function () {
+    flushVisibleTime(true);
+    visibleStartedAt = null;
+    stopHeartbeat();
+  });
+
+  if (document.visibilityState === 'visible') {
+    startHeartbeat();
+  }
+})();
 </script>
+
+
+<script>
+(function () {
+  // certdrop-signer-success-bridge-v1 click telemetry
+  document.addEventListener('click', function (event) {
+    var link = event.target && event.target.closest
+      ? event.target.closest(
+          '#signer-top-certificate-cta, ' +
+          '#signer-result-certificate-cta, ' +
+          '.footer-cta a[href]'
+        )
+      : null;
+
+    if (!link || !window.certdropSignerAnalytics) return;
+
+    var interactionType = 'certificate_cta_top';
+
+    if (link.id === 'signer-result-certificate-cta') {
+      interactionType = 'certificate_cta_result';
+    } else if (link.closest('.footer-cta')) {
+      interactionType = 'certificate_cta_footer';
+    }
+
+    window.certdropSignerAnalytics('user_interaction', {
+      interaction_type: interactionType
+    });
+  }, true);
+})();
+</script>
+<script id="certdrop-server-authoritative-promo-runtime-v2">
+  (() => {
+    const endpoint =
+      location.hostname === 'signer.certdrop.app' ||
+      location.port === '3002'
+        ? '/api/promotion-state'
+        : '/api/site-config';
+
+    const selectors = [
+      '#signer-certificate-cta',
+      '.signer-result-certificate-cta',
+      '.footer-cta',
+      '.cta-link'
+    ];
+
+    function livePrice(config) {
+      const prices = [
+        config?.pricing?.cardPrice,
+        config?.pricing?.cryptoPrice
+      ]
+        .map(Number)
+        .filter(value => Number.isFinite(value) && value > 0);
+
+      return prices.length ? Math.min(...prices) : null;
+    }
+
+    function priceLabel(value) {
+      return Number.isInteger(value)
+        ? '$' + value
+        : '$' + value.toFixed(2);
+    }
+
+    function updatePrice(root, label) {
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT
+      );
+
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+
+      for (const node of nodes) {
+        node.nodeValue = String(node.nodeValue || '').replace(
+          /\$\d+(?:\.\d{1,2})?(?=\D|$)/g,
+          label
+        );
+      }
+    }
+
+    async function refreshPromotion() {
+      try {
+        const response = await fetch(endpoint, {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' }
+        });
+
+        if (!response.ok) return;
+
+        const config = await response.json();
+        const price = livePrice(config);
+
+        if (!price || !document.body) return;
+
+        const label = priceLabel(price);
+        for (const selector of selectors) {
+          document.querySelectorAll(selector).forEach(root => {
+            updatePrice(root, label);
+          });
+        }
+      } catch {
+        // Keep the server-rendered price and retry later.
+      }
+    }
+
+    refreshPromotion();
+    window.setInterval(refreshPromotion, 60000);
+  })();
+  </script>
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"3f9b08b123cc4f618b2ea1afb9b3ac37","r":1,"spa":2}' crossorigin="anonymous"></script>
+
+
 
 </body></html>
