@@ -21,13 +21,14 @@ h1{font-size:24px;letter-spacing:-.5px;font-weight:650;margin:0 0 5px}
 .pick .ico{width:20px;color:#bdbdbd;font-size:16px;flex:none;text-align:center}
 .pick strong{display:block;font-size:12px;font-weight:550;overflow-wrap:anywhere}
 .pick small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
-input[type=file]{display:none}
-input[type=password]{width:100%;background:#191919;border:1px solid var(--line);border-radius:5px;padding:11px 12px;color:var(--text);outline:none;font:inherit}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+input[type=password]{width:100%;background:#191919;border:1px solid var(--line);border-radius:5px;padding:11px 12px;color:var(--text);outline:none;font:inherit;font-size:16px}
 input[type=password]:focus{border-color:#999}
 button{width:100%;border:1px solid #e5e5e5;border-radius:5px;padding:11px;background:#e5e5e5;color:#171717;font-weight:650;font-size:13px;cursor:pointer;margin-top:4px}
 button:hover:not(:disabled){background:#fff}
 button:disabled{opacity:.45;cursor:not-allowed}
 .status{margin-top:13px;color:var(--muted);font-size:12px;min-height:18px}
+.status.error{color:#ff7a7a}
 .hint{color:#929292;font-size:11px;margin:14px 2px 0}
 .footer{color:#777;font-size:10px;margin-top:24px}
 </style>
@@ -38,9 +39,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <h1>Sign your IPA.</h1>
   <p class="intro">Choose your app and signing certificate. One tap to sign.</p>
 
+  <!-- Field names match EonHub's docs: name, p12, mobileprovision, ipa, pass -->
   <form class="card" id="signForm" method="post"
         action="https://api.casp.dev/upload.php"
-        enctype="multipart/form-data" target="_blank">
+        enctype="multipart/form-data">
     <input type="hidden" id="appName" name="name" value="Signed App">
 
     <div class="field">
@@ -49,7 +51,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <span class="ico">＋</span>
         <span><strong id="ipaName">Choose IPA file</strong><small id="ipaInfo">Your .ipa app file</small></span>
       </label>
-      <input id="ipa" name="ipa" type="file" accept=".ipa,application/octet-stream">
+      <input id="ipa" name="ipa" type="file">
     </div>
 
     <div class="field">
@@ -58,11 +60,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <span class="ico">♧</span>
         <span><strong id="certName">Choose certificate</strong><small id="certInfo">Your Apple distribution certificate</small></span>
       </label>
-      <input id="cert" name="p12" type="file" accept=".p12,application/x-pkcs12">
+      <input id="cert" name="p12" type="file">
     </div>
 
     <div class="field">
-      <label>3. Certificate password</label>
+      <label for="password">3. Certificate password</label>
       <input id="password" name="pass" type="password" placeholder="Enter certificate password" autocomplete="off">
     </div>
 
@@ -72,19 +74,27 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <span class="ico">▤</span>
         <span><strong id="profileName">Choose provisioning profile</strong><small id="profileInfo">.mobileprovision file (required)</small></span>
       </label>
-      <input id="profile" name="mobileprovision" type="file" accept=".mobileprovision">
+      <input id="profile" name="mobileprovision" type="file">
     </div>
 
     <button id="sign" type="button" disabled>Sign &amp; Install</button>
     <div class="status" id="status" role="status" aria-live="polite">Select your files to continue.</div>
   </form>
 
-  <p class="hint">The signing request opens in a new tab. Your IPA, certificate, provisioning profile and certificate password are sent to the EonHub signing API. Only use a certificate you trust this service with.</p>
+  <p class="hint">Your IPA, certificate, provisioning profile and certificate password are sent to the EonHub signing API. Only use a certificate you trust this service with.</p>
   <div class="footer">SignHub · Independent project, not affiliated with Apple or SignTools. Signing API by EonHub.</div>
 </main>
 
 <script>
 const $ = id => document.getElementById(id);
+
+// Extension rules are checked here instead of using the HTML "accept"
+// attribute, because iOS often greys out .ipa/.p12/.mobileprovision files.
+const RULES = {
+  ipa:     { ext: /\.ipa$/i,             label: '.ipa' },
+  cert:    { ext: /\.p12$/i,             label: '.p12' },
+  profile: { ext: /\.mobileprovision$/i, label: '.mobileprovision' }
+};
 
 function size(bytes) {
   return bytes < 1048576
@@ -92,11 +102,27 @@ function size(bytes) {
     : (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+function setStatus(text, isError) {
+  $('status').textContent = text;
+  $('status').classList.toggle('error', !!isError);
+}
+
 function bindFile(id, nameId, infoId, defaultName, defaultInfo) {
   $(id).addEventListener('change', event => {
     const file = event.target.files[0];
+
+    if (file && !RULES[id].ext.test(file.name)) {
+      event.target.value = '';
+      $(nameId).textContent = defaultName;
+      $(infoId).textContent = defaultInfo;
+      setStatus('That file is not a ' + RULES[id].label + ' file. Please choose the right one.', true);
+      checkForm();
+      return;
+    }
+
     $(nameId).textContent = file ? file.name : defaultName;
     $(infoId).textContent = file ? size(file.size) : defaultInfo;
+    setStatus('Select your files to continue.', false);
 
     if (id === 'ipa' && file) {
       const appName = file.name.replace(/\.ipa$/i, '').replace(/[_-]+/g, ' ').trim();
@@ -124,20 +150,25 @@ function checkForm() {
 $('sign').addEventListener('click', () => {
   if (!$('ipa').files.length || !$('cert').files.length ||
       !$('profile').files.length || !$('password').value) {
-    $('status').textContent = 'Choose all three files and enter your certificate password.';
+    setStatus('Choose all three files and enter your certificate password.', true);
     checkForm();
     return;
   }
 
-  $('status').textContent = 'Submitting your files to the EonHub signing service in a new tab…';
   $('sign').disabled = true;
+  setStatus('Uploading to the signing service. Large IPAs can take a while, please keep this page open…', false);
 
-  // A standard multipart form submission is intentional:
-  // it avoids browser CORS restrictions on cross-origin fetch requests.
+  // Plain multipart form post, exactly as EonHub's docs show.
+  // It runs in this tab so iOS doesn't block it and the install prompt can open.
   $('signForm').submit();
+});
 
-  $('status').textContent = 'The signing request was sent. Check the new tab for the signing result.';
-  checkForm();
+// If the user comes back (back button / bfcache), reset the button.
+window.addEventListener('pageshow', e => {
+  if (e.persisted) {
+    setStatus('Select your files to continue.', false);
+    checkForm();
+  }
 });
 </script>
 </body>
