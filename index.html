@@ -46,9 +46,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <p class="hint">Signing needs a secure server with Apple signing tools. Your certificate and password should never be sent to an untrusted service.</p>
 <div class="footer">SignHub · Independent project, not affiliated with Apple or SignTools.</div>
 </main>
-<script>
 
+<script>
 const $ = id => document.getElementById(id);
+const API = 'https://signer.certdrop.app';
 
 function size(n) {
   return n < 1048576
@@ -77,7 +78,6 @@ bindFile('cert', 'certName', 'certInfo',
 bindFile('profile', 'profileName', 'profileInfo',
   'Choose provisioning profile', '.mobileprovision file (required)');
 
-// Enable button when all files and password are provided
 $('password').addEventListener('input', check);
 
 function check() {
@@ -89,7 +89,90 @@ function check() {
   );
 }
 
-// Signing
+// Read API errors
+async function readResponse(response) {
+  const text = await response.text();
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(text || `Server returned HTTP ${response.status}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+
+  return data;
+}
+
+// Check signing progress
+function watchSigning(ticketId) {
+  const status = $('status');
+  let finished = false;
+
+  const poll = async () => {
+    if (finished) return;
+
+    try {
+      const response = await fetch(
+        `${API}/api/sign/status/${encodeURIComponent(ticketId)}`
+      );
+
+      if (!response.ok) return;
+
+      const result = await response.json();
+
+      if (result.status === 'success') {
+        finished = true;
+        clearInterval(timer);
+
+        if (!result.installUrl) {
+          status.textContent = 'Signing finished, but no install link was returned.';
+          return;
+        }
+
+        $('installLink').href = result.installUrl;
+        $('installLink').textContent = 'Install on iPhone';
+        $('install').style.display = 'block';
+
+        status.textContent = 'Successfully signed! Open the link in Safari on your iPhone.';
+      }
+
+      if (['failed', 'timeout', 'rejected'].includes(result.status)) {
+        finished = true;
+        clearInterval(timer);
+        status.textContent = result.error || 'Signing failed.';
+      }
+
+      if (result.status === 'queued') {
+        status.textContent = result.queuePosition
+          ? `Waiting in queue (#${result.queuePosition})...`
+          : 'Waiting in signing queue...';
+      }
+
+      if (result.status === 'in_progress') {
+        status.textContent = 'Signing your IPA...';
+      }
+
+    } catch (error) {
+      console.error('Status check failed:', error);
+    }
+  };
+
+  const timer = setInterval(poll, 3000);
+  poll();
+
+  setTimeout(() => {
+    if (!finished) {
+      clearInterval(timer);
+      status.textContent = 'Signing is taking longer than expected. Check again later.';
+    }
+  }, 300000);
+}
+
+// Sign IPA
 $('sign').addEventListener('click', async () => {
   const btn = $('sign');
   const status = $('status');
@@ -98,79 +181,46 @@ $('sign').addEventListener('click', async () => {
   $('install').style.display = 'none';
 
   try {
-    const API = 'https://flarestore.app';
+    const ipa = $('ipa').files[0];
 
-    // Upload IPA
+    if (ipa.size > 64 * 1024 * 1024) {
+      throw new Error('This version supports IPA files up to 64 MB.');
+    }
+
     status.textContent = 'Uploading IPA...';
 
-    const uploadData = new FormData();
-    uploadData.append('ipa', $('ipa').files[0]);
+    const formData = new FormData();
+    formData.append('ipa', ipa);
+    formData.append('p12', $('cert').files[0]);
+    formData.append('mobileprovision', $('profile').files[0]);
+    formData.append('password', $('password').value);
 
-    const uploadResponse = await fetch(
-      `${API}/upload/ipa`,
-      { method: 'POST', body: uploadData }
-    );
+    const response = await fetch(`${API}/api/sign`, {
+      method: 'POST',
+      body: formData
+    });
 
-    if (!uploadResponse.ok) {
-      throw new Error(`IPA upload failed: HTTP ${uploadResponse.status}`);
+    const result = await readResponse(response);
+
+    if (!result.ticketId) {
+      throw new Error(result.error || 'The server did not return a signing ticket.');
     }
 
-    const upload = await uploadResponse.json();
+    status.textContent = 'Your IPA was uploaded. Signing started...';
 
-    if (!upload.success || !upload.session_id) {
-      throw new Error(upload.error || 'Could not upload IPA.');
-    }
-
-    // Send certificate and provisioning profile
-    status.textContent = 'Signing application...';
-
-    const signData = new FormData();
-
-    signData.append('session_id', upload.session_id);
-    signData.append('p12', $('cert').files[0]);
-    signData.append('provision', $('profile').files[0]);
-    signData.append('p12_password', $('password').value);
-
-    const signResponse = await fetch(
-      `${API}/sign`,
-      { method: 'POST', body: signData }
-    );
-
-    if (!signResponse.ok) {
-      let message = `Signing failed: HTTP ${signResponse.status}`;
-
-      try {
-        const error = await signResponse.json();
-        message = error.error || error.message || message;
-      } catch {}
-
-      throw new Error(message);
-    }
-
-    const result = await signResponse.json();
-
-    if (!result.success || !result.install_url) {
-      throw new Error(result.error || 'Signing failed.');
-    }
-
-    // Show installation link
-    const installUrl = new URL(result.install_url, API).href;
-
-    $('installLink').href = installUrl;
-    $('install').style.display = 'block';
-
-    status.textContent =
-      'Successfully signed! Open the installation link in Safari on your iPhone.';
+    watchSigning(result.ticketId);
 
   } catch (error) {
-    status.textContent =
-      error.message === 'Failed to fetch'
-        ? 'Connection failed. Check API availability and CORS settings.'
-        : error.message;
+    console.error(error);
+
+    status.textContent = error.message === 'Failed to fetch'
+      ? 'Connection failed. CertDrop may block requests from GitHub Pages (CORS).'
+      : error.message;
 
   } finally {
     check();
   }
 });
 </script>
+
 </body></html>
