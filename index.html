@@ -1,10 +1,228 @@
-<!doctype html>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<form method="post" action="https://api.casp.dev/upload.php" enctype="multipart/form-data">
-  <p><input type="text" name="name" placeholder="App name" required></p>
-  <p>.p12 <input type="file" name="p12" required></p>
-  <p>.mobileprovision <input type="file" name="mobileprovision" required></p>
-  <p>.ipa <input type="file" name="ipa" required></p>
-  <p><input type="password" name="pass" placeholder="Certificate password" required></p>
-  <p><input type="submit" value="SIGN"></p>
-</form>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Custom IPA Signer</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 30px 16px;
+      background: #101116;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    .container {
+      max-width: 460px;
+      margin: 40px auto;
+      padding: 25px;
+      background: #1b1d25;
+      border: 1px solid #30333e;
+      border-radius: 16px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-top: 0;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #a5a8b5;
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      margin: 17px 0 7px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      background: #11131a;
+      color: white;
+      border: 1px solid #393d4b;
+      border-radius: 8px;
+    }
+
+    input[type="file"] {
+      font-size: 13px;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 24px;
+      padding: 14px;
+      border: 0;
+      border-radius: 9px;
+      background: #3978f6;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #2865dc;
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+
+    .notice {
+      margin-top: 18px;
+      color: #a5a8b5;
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    #status {
+      margin-top: 16px;
+      text-align: center;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .credit {
+      margin-top: 22px;
+      text-align: center;
+      color: #888c9b;
+      font-size: 12px;
+    }
+
+    .credit a {
+      color: #8bb2ff;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>IPA Signer</h1>
+  <p class="subtitle">Sign an IPA using your own certificate.</p>
+
+  <form
+    id="uploadForm"
+    method="POST"
+    action="https://api.casp.dev/upload.php"
+    enctype="multipart/form-data"
+  >
+
+    <label for="name">App Name</label>
+    <input
+      type="text"
+      id="name"
+      name="name"
+      placeholder="Example: My App"
+      required
+    >
+
+    <label for="p12">P12 Certificate</label>
+    <input
+      type="file"
+      id="p12"
+      name="p12"
+      accept=".p12"
+      required
+    >
+
+    <label for="mobileprovision">MobileProvision</label>
+    <input
+      type="file"
+      id="mobileprovision"
+      name="mobileprovision"
+      accept=".mobileprovision"
+      required
+    >
+
+    <label for="ipa">IPA File</label>
+    <input
+      type="file"
+      id="ipa"
+      name="ipa"
+      accept=".ipa"
+      required
+    >
+
+    <label for="pass">Certificate Password</label>
+    <input
+      type="password"
+      id="pass"
+      name="pass"
+      placeholder="Certificate password"
+      required
+      autocomplete="off"
+    >
+
+    <button type="submit" id="submitButton">
+      SIGN IPA
+    </button>
+
+  </form>
+
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <p class="notice">
+    Maximum file size: 3 GB.<br>
+    Use a valid, non-revoked certificate and matching provisioning profile.
+  </p>
+
+  <div class="credit">
+    Custom signing API example by
+    <a href="https://storage-eonhub.neocities.org/custom-sign"
+       target="_blank" rel="noopener">Eonhub</a>.
+  </div>
+
+</div>
+
+<script>
+  const form = document.getElementById("uploadForm");
+  const button = document.getElementById("submitButton");
+  const status = document.getElementById("status");
+
+  const MAX_SIZE = 3 * 1024 * 1024 * 1024;
+
+  form.addEventListener("submit", function(event) {
+    const files = [
+      document.getElementById("p12").files[0],
+      document.getElementById("mobileprovision").files[0],
+      document.getElementById("ipa").files[0]
+    ];
+
+    for (const file of files) {
+      if (!file) {
+        event.preventDefault();
+        status.textContent = "Please select all required files.";
+        return;
+      }
+
+      if (file.size > MAX_SIZE) {
+        event.preventDefault();
+        status.textContent = file.name + " exceeds the 3 GB limit.";
+        return;
+      }
+    }
+
+    status.textContent = "Uploading files for signing. Please wait...";
+    button.disabled = true;
+    button.textContent = "SUBMITTING...";
+  });
+</script>
+
+</body>
+</html>
