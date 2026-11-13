@@ -17,11 +17,27 @@
     button,.btn{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 18px;font-weight:700;text-decoration:none;display:inline-block;text-align:center;color:var(--text)}
     .primary{background:var(--accent);color:white;min-width:130px}.primary:hover{background:var(--accent2)}.primary:disabled{opacity:.55;cursor:wait}
     .secondary{background:#2a3446;color:var(--text)}.progress{height:9px;background:#30394a;border-radius:20px;overflow:hidden;margin-top:20px}.bar{height:100%;width:0;background:var(--accent);transition:width .2s}
-    #status{color:var(--muted);font-size:14px;margin-top:10px;overflow-wrap:anywhere}.tweak-row{display:flex;gap:8px;align-items:center;margin-top:8px}.tweak-row span{flex:1;overflow-wrap:anywhere}.remove{padding:5px 10px;background:#3a2930;color:#ffb8b8}
+    #status{color:var(--muted);font-size:14px;margin-top:10px;overflow-wrap:anywhere}
     .result{margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}.result h2{margin:0 0 4px;font-size:20px}
     .result dl{margin:12px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}.result dt{color:var(--muted)}.result dd{margin:0;overflow-wrap:anywhere}
     pre{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font-size:12px;max-height:260px;white-space:pre-wrap;overflow-wrap:anywhere}
     .foot{color:var(--muted);font-size:12px;text-align:center;margin:18px 0}.hidden{display:none!important}
+    /* foldable URL blocks */
+    details.fold{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:var(--field)}
+    details.fold>summary{cursor:pointer;padding:10px 13px;font-weight:600;font-size:14px;color:var(--muted);list-style:none}
+    details.fold>summary::-webkit-details-marker{display:none}
+    details.fold>summary::before{content:"▸";display:inline-block;margin-right:8px;transition:transform .15s}
+    details.fold[open]>summary::before{transform:rotate(90deg)}
+    details.fold .fold-body{padding:0 13px 13px}
+    details.fold input{background:var(--panel)}
+    .pw-other{margin-top:10px}
+    /* console */
+    #console{position:fixed;left:0;right:0;bottom:0;z-index:50;max-width:900px;margin:0 auto;height:min(55vh,460px);background:#0a0d13;border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;box-shadow:0 -12px 40px #000a;display:flex;flex-direction:column;transform:translateY(105%);transition:transform .25s}
+    #console.open{transform:none}
+    .con-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+    .con-head strong{flex:1;font-size:14px}.con-head button{padding:6px 11px;font-size:13px;background:#2a3446}
+    #con-log{flex:1;overflow:auto;padding:10px 12px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+    #con-log div{padding:1px 0}.l-time{color:#5f6b80;margin-right:8px}.l-info{color:#cfd6e4}.l-ok{color:#7ee2a0}.l-warn{color:#ffd37a}.l-err{color:var(--danger)}
     @media(max-width:600px){.grid{grid-template-columns:1fr}.panel{padding:18px}}
   </style>
 </head>
@@ -35,11 +51,11 @@
   <section class="panel">
     <div class="section">
       <div class="section-title">IPA source</div>
-      <div class="grid">
-        <div class="field"><label for="ipa-file">IPA file</label><input id="ipa-file" type="file" accept=".ipa"></div>
-        <div class="field"><label for="ipa-url">Or direct IPA URL</label><input id="ipa-url" type="url" placeholder="https://example.com/app.ipa"></div>
-      </div>
-      <div class="hint">Choose a local IPA or enter a direct URL. Maximum local upload size: 5 GB.</div>
+      <div class="field"><label for="ipa-file">IPA file</label><input id="ipa-file" type="file" accept=".ipa"></div>
+      <details class="fold"><summary>Or use a direct IPA URL</summary>
+        <div class="fold-body"><input id="ipa-url" type="url" placeholder="https://example.com/app.ipa"></div>
+      </details>
+      <div class="hint">Maximum local upload size: 5 GB.</div>
     </div>
 
     <div class="section">
@@ -47,12 +63,28 @@
       <div class="warning"><strong>Important:</strong> Use a certificate and provisioning profile you are authorized to use. The P12 password is sent to the signing service to process the certificate.</div>
       <div class="grid">
         <div class="field"><label for="p12-file">P12 certificate file</label><input id="p12-file" type="file" accept=".p12"></div>
-        <div class="field"><label for="p12-url">Or P12 certificate URL</label><input id="p12-url" type="url" placeholder="https://example.com/certificate.p12"></div>
         <div class="field"><label for="prov-file">MobileProvision file</label><input id="prov-file" type="file" accept=".mobileprovision,.provisionprofile,.mobileprov"></div>
-        <div class="field"><label for="prov-url">Or MobileProvision URL</label><input id="prov-url" type="url" placeholder="https://example.com/profile.mobileprovision"></div>
-        <div class="field"><label for="p12-password">P12 password</label><input id="p12-password" type="password" autocomplete="off" placeholder="Enter P12 password"></div>
       </div>
-      <div class="hint">For each certificate item, provide either a file or a direct URL, not both. URLs must be accessible to the signing backend.</div>
+      <details class="fold"><summary>Or use a P12 certificate URL</summary>
+        <div class="fold-body"><input id="p12-url" type="url" placeholder="https://example.com/certificate.p12"></div>
+      </details>
+      <details class="fold"><summary>Or use a MobileProvision URL</summary>
+        <div class="fold-body"><input id="prov-url" type="url" placeholder="https://example.com/profile.mobileprovision"></div>
+      </details>
+      <div class="field" style="margin-top:14px">
+        <label for="pw-select">P12 password</label>
+        <select id="pw-select">
+          <option value="AppleP12">AppleP12</option>
+          <option value="applejr.net">applejr.net</option>
+          <option value="__other">Andere…</option>
+        </select>
+        <div id="pw-other" class="pw-other hidden">
+          <input id="p12-password" type="password" autocomplete="off" placeholder="Type the P12 password">
+          <div class="hint">Or upload a password.txt file:</div>
+          <input id="pw-file" type="file" accept=".txt,text/plain">
+        </div>
+      </div>
+      <div class="hint">For each certificate item, provide either a file or a URL, not both. URLs must be accessible to the signing backend.</div>
     </div>
 
     <div class="section">
@@ -81,6 +113,7 @@
     <div class="actions">
       <button id="sign-btn" class="primary" type="button">Sign IPA</button>
       <button id="reset-btn" class="secondary" type="button">Reset</button>
+      <button id="console-btn" class="secondary" type="button">Console</button>
     </div>
     <div class="progress" aria-label="Progress"><div id="progress-bar" class="bar"></div></div>
     <div id="status" role="status" aria-live="polite">Ready.</div>
@@ -101,6 +134,16 @@
   <p class="foot">This page uses the NexSideloading signing service. The service must permit requests from the domain hosting this file.</p>
 </main>
 
+<div id="console" aria-label="Console">
+  <div class="con-head">
+    <strong>Console</strong>
+    <button id="con-copy" type="button">Copy</button>
+    <button id="con-clear" type="button">Clear</button>
+    <button id="con-close" type="button">Close</button>
+  </div>
+  <div id="con-log"></div>
+</div>
+
 <script src="https://unpkg.com/tus-js-client/dist/tus.js"></script>
 <script>
 (() => {
@@ -117,7 +160,38 @@
   let activeUpload = null, activeSource = null, runId = 0;
   let selectedTweaks = [];
 
-  function status(message) { statusEl.textContent = message; }
+  /* ---------- Console ---------- */
+  const conEl = $('console'), conLog = $('con-log');
+  let lastBase = '', lastPct = -100;
+  function log(message, type = 'info') {
+    const row = document.createElement('div');
+    const t = document.createElement('span'); t.className = 'l-time'; t.textContent = new Date().toLocaleTimeString();
+    const m = document.createElement('span'); m.className = 'l-' + type; m.textContent = message;
+    row.append(t, m); conLog.append(row); conLog.scrollTop = conLog.scrollHeight;
+  }
+  function openConsole() { conEl.classList.add('open'); }
+  function closeConsole() { conEl.classList.remove('open'); }
+  $('console-btn').addEventListener('click', () => conEl.classList.contains('open') ? closeConsole() : openConsole());
+  $('con-close').addEventListener('click', closeConsole);
+  $('con-clear').addEventListener('click', () => { conLog.textContent = ''; });
+  $('con-copy').addEventListener('click', async () => {
+    const text = Array.from(conLog.children).map(r => r.textContent).join('\n');
+    try { await navigator.clipboard.writeText(text); log('Console copied to clipboard.', 'ok'); }
+    catch (_) { log('Could not copy to clipboard.', 'warn'); }
+  });
+  window.addEventListener('error', e => log(`Script error: ${e.message}`, 'err'));
+  window.addEventListener('unhandledrejection', e => log(`Unhandled promise rejection: ${e.reason}`, 'err'));
+
+  function status(message, type) {
+    statusEl.textContent = message;
+    const base = message.replace(/\d+%/, '');
+    const m = message.match(/(\d+)%/);
+    const pct = m ? Number(m[1]) : null;
+    if (pct === null || base !== lastBase || pct - lastPct >= 10 || pct >= 100) {
+      log(message, type || 'info'); lastPct = pct === null ? -100 : pct;
+    }
+    lastBase = base;
+  }
   function progress(value) { bar.style.width = `${Math.max(0, Math.min(100, value))}%`; }
   function busy(value) { signBtn.disabled = value; signBtn.textContent = value ? 'Working…' : 'Sign IPA'; }
   function cleanup() {
@@ -136,20 +210,43 @@
     if (lower.includes('failed to fetch')) return 'Could not reach the signing service. Check network access and CORS settings.';
     return message;
   }
+
+  /* ---------- Password dropdown ---------- */
+  function getPassword() {
+    const v = $('pw-select').value;
+    return v === '__other' ? $('p12-password').value : v;
+  }
+  $('pw-select').addEventListener('change', () => {
+    const other = $('pw-select').value === '__other';
+    $('pw-other').classList.toggle('hidden', !other);
+    log(other ? 'Password: custom (type or upload password.txt).' : `Password preset selected: ${$('pw-select').value}`);
+    if (other) $('p12-password').focus();
+  });
+  $('pw-file').addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      const text = (await file.text()).replace(/^\uFEFF/, '').split(/\r?\n/)[0].trim();
+      $('p12-password').value = text;
+      log(`Loaded password from ${file.name} (${text.length} characters).`, 'ok');
+    } catch (e) { log(`Could not read ${file.name}: ${e.message}`, 'err'); }
+  });
+
   function validateCertificate(form) {
     const p12 = $('p12-file').files[0], p12Url = $('p12-url').value.trim();
     const profile = $('prov-file').files[0], profileUrl = $('prov-url').value.trim();
-    const password = $('p12-password').value;
+    const password = getPassword();
 
     if ((!p12 && !p12Url) || (p12 && p12Url)) throw new Error('Provide either a P12 file or a P12 URL.');
     if ((!profile && !profileUrl) || (profile && profileUrl)) throw new Error('Provide either a MobileProvision file or a MobileProvision URL.');
-    if (!password) throw new Error('Enter the P12 password. If the P12 has no password, check whether the backend accepts an empty password.');
+    if (!password) throw new Error('Enter the P12 password (type it or upload password.txt).');
 
     if (p12) form.append('p12', p12, p12.name);
     else form.append('p12_url', p12Url);
     if (profile) form.append('mobileprovision', profile, profile.name);
     else form.append('mobileprovision_url', profileUrl);
     form.append('p12_password', password);
+    log(`Certificate: ${p12 ? 'file ' + p12.name : 'URL'}, profile: ${profile ? 'file ' + profile.name : 'URL'}, password: ${'•'.repeat(Math.min(password.length, 12))}`);
   }
   function buildForm(uploadUrl, ipaSize, ipaUrl) {
     const form = new FormData();
@@ -170,7 +267,7 @@
     return form;
   }
 
-  /* ---------- Result handling (replaces the redirect) ---------- */
+  /* ---------- Result handling ---------- */
   function absUrl(value) {
     try { return new URL(value, SIGNER_ORIGIN).href; } catch (_) { return null; }
   }
@@ -183,7 +280,7 @@
   function pickLinks(data) {
     const items = collectStrings(data, '', []);
     let itms = null, manifest = null, download = null;
-    for (const { key, value } of items) {
+    for (const { value } of items) {
       const v = value.trim();
       if (!itms && /^itms-services:\/\//i.test(v)) itms = v;
     }
@@ -214,18 +311,18 @@
   function showResult(data) {
     const { itms, download } = pickLinks(data);
     const info = $('result-info'); info.textContent = '';
-    const exp = pickField(data, /expir/i);
-    const cert = pickField(data, /signed_?with|cert(ificate)?_?name|team/i);
     addInfo('App', pickField(data, /^(bundle_?name|app_?name|name)$/i));
     addInfo('Bundle ID', pickField(data, /^bundle_?id$/i));
-    addInfo('Expires', exp);
-    addInfo('Signed with', cert);
+    addInfo('Expires', pickField(data, /expir/i));
+    addInfo('Signed with', pickField(data, /signed_?with|cert(ificate)?_?name|team/i));
 
     const installBtn = $('install-btn'), dlBtn = $('download-btn'), debug = $('debug');
     installBtn.classList.toggle('hidden', !itms);
     if (itms) installBtn.href = itms;
     dlBtn.classList.toggle('hidden', !download);
     if (download) dlBtn.href = download;
+    log(`Install link: ${itms || 'none'}`, itms ? 'ok' : 'warn');
+    log(`Download link: ${download || 'none'}`, download ? 'ok' : 'warn');
 
     if (!itms) {
       $('install-hint').textContent = 'Signing finished, but the service did not return an install link I could recognise. The raw response is shown below.';
@@ -248,21 +345,26 @@
     const url = statusUrl || (jobId ? `${SIGNER_BASE}/status/${encodeURIComponent(jobId)}` : null);
     if (url) {
       try {
+        log(`Fetching final status: ${url}`);
         const response = await fetch(url, { cache: 'no-cache' });
         if (response.ok) data = Object.assign(data, await response.json());
-      } catch (_) {}
+        else log(`Final status returned HTTP ${response.status}`, 'warn');
+      } catch (e) { log(`Final status fetch failed: ${e.message}`, 'warn'); }
     }
     if (!data.job_id && jobId) data.job_id = jobId;
-    progress(100); status('Done. IPA successfully signed.');
+    progress(100); status('Done. IPA successfully signed.', 'ok');
     showResult(data);
   }
 
   async function postSign(form, currentRun) {
+    log(`POST ${SIGN_ENDPOINT}`);
     const response = await fetch(SIGN_ENDPOINT, { method: 'POST', body: form });
     const text = await response.text();
-    if (!response.ok) throw new Error(friendlyError(text || response.statusText));
+    log(`Response: HTTP ${response.status}`, response.ok ? 'ok' : 'err');
+    if (!response.ok) { log(text.slice(0, 500), 'err'); throw new Error(friendlyError(text || response.statusText)); }
     let payload;
-    try { payload = JSON.parse(text); } catch (_) { throw new Error('The signing service returned an unreadable response.'); }
+    try { payload = JSON.parse(text); } catch (_) { log(text.slice(0, 500), 'err'); throw new Error('The signing service returned an unreadable response.'); }
+    log(`Job started${payload.job_id ? ': ' + payload.job_id : ''}`, 'ok');
     if (payload.stream_url) {
       await watchProgress(payload.stream_url, payload.status_url, payload.job_id, currentRun);
     } else if (currentRun === runId) {
@@ -272,6 +374,7 @@
   function tusUpload(blob, filename, currentRun) {
     return new Promise((resolve, reject) => {
       if (!window.tus || !window.tus.Upload) return reject(new Error('The upload library did not load. Refresh and try again.'));
+      log(`Uploading ${filename} (${(blob.size / 1048576).toFixed(1)} MB) via tus…`);
       const task = new tus.Upload(blob, {
         endpoint: TUS_ENDPOINT, chunkSize: 10 * 1024 * 1024, parallelUploads: 4,
         retryDelays: [0, 1000, 3000, 5000],
@@ -284,7 +387,7 @@
         },
         onSuccess() {
           if (currentRun !== runId) return reject(new Error('Upload cancelled.'));
-          progress(75); resolve(task.url);
+          progress(75); log('Upload finished.', 'ok'); resolve(task.url);
         }
       });
       activeUpload = task; task.start();
@@ -292,6 +395,7 @@
   }
   async function watchProgress(streamUrl, statusUrl, jobId, currentRun) {
     if (!window.EventSource) return poll(statusUrl, streamUrl, jobId, currentRun);
+    log('Listening to live progress stream…');
     await new Promise((resolve, reject) => {
       const source = new EventSource(streamUrl); activeSource = source;
       const close = () => { source.close(); if (activeSource === source) activeSource = null; };
@@ -318,6 +422,7 @@
         if (currentRun !== runId) { close(); return resolve(); }
         let data = {}; try { data = JSON.parse(event.data || '{}'); } catch (_) {}
         close();
+        log(`Signer reported failure: ${data.error || data.message || 'unknown'}`, 'err');
         const err = new Error(friendlyError(data.error || data.message || 'Signing failed.'));
         err.final = true;
         reject(err);
@@ -326,12 +431,14 @@
     }).catch(async error => {
       if (error && error.final) throw error;
       if (currentRun !== runId) return;
+      log(`${error.message} Falling back to polling.`, 'warn');
       return poll(statusUrl, streamUrl, jobId, currentRun);
     });
   }
   async function poll(statusUrl, streamUrl, jobId, currentRun) {
     const url = statusUrl || (streamUrl || '').replace('/status/stream/', '/status/');
     if (!url) throw new Error('No status endpoint was returned by the signer.');
+    log(`Polling ${url}`);
     while (currentRun === runId) {
       const response = await fetch(url, { cache: 'no-cache' });
       if (!response.ok) throw new Error(`Status request failed (${response.status}).`);
@@ -352,7 +459,11 @@
   }
 
   async function submit() {
-    const currentRun = ++runId; cleanup(); hideResult(); busy(true); progress(0); status('Preparing…');
+    const currentRun = ++runId; cleanup(); hideResult(); busy(true); progress(0);
+    lastBase = ''; lastPct = -100;
+    openConsole();
+    log('─── Sign started ───');
+    status('Preparing…');
     try {
       const builtIn = $('sideload-app').value;
       const ipaFile = $('ipa-file').files[0];
@@ -362,7 +473,7 @@
       if (ipaFile && ipaUrl) throw new Error('Choose either an IPA file or an IPA URL, not both.');
 
       if (builtIn || ipaUrl) {
-        status(builtIn ? 'Preparing built-in app…' : 'Sending IPA URL to signing service…');
+        status(builtIn ? `Preparing built-in app (${builtIn})…` : 'Sending IPA URL to signing service…');
         progress(5);
         await postSign(buildForm(null, null, ipaUrl), currentRun);
       } else {
@@ -373,7 +484,7 @@
         await postSign(buildForm(uploadUrl, ipaFile.size, null), currentRun);
       }
     } catch (error) {
-      if (currentRun === runId) { progress(0); status(`Error: ${friendlyError(error.message || error)}`); }
+      if (currentRun === runId) { progress(0); status(`Error: ${friendlyError(error.message || error)}`, 'err'); }
     } finally {
       if (currentRun === runId) busy(false);
     }
@@ -384,7 +495,9 @@
     document.querySelectorAll('input').forEach(input => {
       if (['file', 'password', 'text', 'url'].includes(input.type)) input.value = '';
     });
+    document.querySelectorAll('details.fold').forEach(d => { d.open = false; });
     $('sideload-app').value = ''; selectedTweaks = []; $('tweak-list').textContent = 'No tweaks selected.';
+    $('pw-select').value = 'AppleP12'; $('pw-other').classList.add('hidden');
     progress(0); status('Ready.'); busy(false);
   }
 
@@ -397,6 +510,14 @@
   signBtn.addEventListener('click', submit);
   $('reset-btn').addEventListener('click', resetAll);
   $('again-btn').addEventListener('click', () => { resetAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  $('install-btn').addEventListener('click', () => {
+    openConsole();
+    log('─── Install pressed ───');
+    log(`Opening: ${$('install-btn').href}`, 'ok');
+    log('If nothing happens: open this page in Safari on iPhone/iPad and check the manifest is reachable over HTTPS.', 'warn');
+  });
+  $('download-btn').addEventListener('click', () => { openConsole(); log(`Download pressed: ${$('download-btn').href}`); });
+  log('Ready. Console logs appear here.');
 })();
 </script>
 </body>
