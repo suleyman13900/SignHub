@@ -2,11 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10131a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>SignHub</title>
   <style>
     :root{color-scheme:dark;--bg:#10131a;--panel:#191f2b;--field:#111722;--text:#f4f6fb;--muted:#aab4c5;--line:#30394a;--accent:#6d8cff;--accent2:#526fe0;--danger:#ff7777}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:32px 16px}
+    *{box-sizing:border-box}html{background:var(--bg);min-height:100%}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:calc(32px + env(safe-area-inset-top,0px)) 16px calc(32px + env(safe-area-inset-bottom,0px))}
     main{max-width:780px;margin:auto}.hero{text-align:center;margin:8px 0 26px}.hero h1{font-size:clamp(30px,5vw,42px);margin:0 0 6px}.hero p{color:var(--muted);margin:0}
     .panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:clamp(18px,4vw,28px);box-shadow:0 18px 50px #0004}
     .section{margin:0 0 24px}.section-title{font-weight:700;margin-bottom:12px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{min-width:0}.field label{display:block;font-weight:600;margin-bottom:7px}
@@ -36,7 +40,7 @@
     #console.open{transform:none}
     .con-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
     .con-head strong{flex:1;font-size:14px}.con-head button{padding:6px 11px;font-size:13px;background:#2a3446}
-    #con-log{flex:1;overflow:auto;padding:10px 12px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+    #con-log{flex:1;overflow:auto;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
     #con-log div{padding:1px 0}.l-time{color:#5f6b80;margin-right:8px}.l-info{color:#cfd6e4}.l-ok{color:#7ee2a0}.l-warn{color:#ffd37a}.l-err{color:var(--danger)}
     @media(max-width:600px){.grid{grid-template-columns:1fr}.panel{padding:18px}}
   </style>
